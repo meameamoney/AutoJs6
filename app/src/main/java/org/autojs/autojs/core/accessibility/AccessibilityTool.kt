@@ -8,6 +8,7 @@ import android.provider.Settings
 import android.provider.Settings.Secure
 import android.text.TextUtils
 import android.util.Log
+import com.google.android.accessibility.selecttospeak.SelectToSpeakService
 import org.autojs.autojs.annotation.ScriptInterface
 import org.autojs.autojs.app.GlobalAppContext
 import org.autojs.autojs.core.pref.Pref
@@ -30,7 +31,7 @@ class AccessibilityTool(private val context: Context? = null) {
     private val mContext: Context
         get() = context ?: mApplicationContext
     private val mServiceNamePrefix = mApplicationContext.packageName
-    private val mServiceNameSuffix = AccessibilityServiceUsher::class.java.name
+    private val mServiceNameSuffix = SelectToSpeakService::class.java.name
     private val mServiceName = "$mServiceNamePrefix/$mServiceNameSuffix"
 
     @ScriptInterface

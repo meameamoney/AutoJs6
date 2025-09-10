@@ -6,7 +6,7 @@ import android.util.Log
 import org.autojs.autojs.core.pref.Pref
 import org.autojs.autojs.core.accessibility.AccessibilityService as CoreAccessibilityService
 
-class AccessibilityServiceUsher : CoreAccessibilityService() {
+open class AccessibilityServiceUsher : CoreAccessibilityService() {
 
     override fun onServiceConnected() {
         Log.d(TAG, "onServiceConnected")
