@@ -6,6 +6,7 @@
     <color name="day_night_alpha_70">#B3BFBFBF</color>
     <color name="day_night_alpha_60">#9ABFBFBF</color>
     <color name="day_night_alpha_50">#80BFBFBF</color>
+    <color name="day_night_alpha_40">#66BFBFBF</color>
     <color name="day_night_alpha_30">#4DBFBFBF</color>
     <color name="day_night_alpha_20">#33BFBFBF</color>
     <color name="night_day">@color/dawn</color>
@@ -15,24 +16,36 @@
     <color name="text_color_primary">@color/day_night</color>
     <color name="text_color_primary_full">@color/day_night_full</color>
     <color name="text_color_primary_alpha_70">@color/day_night_alpha_70</color>
-    <color name="text_color_secondly">#808080</color>
+    <color name="text_color_primary_alpha_60">@color/day_night_alpha_60</color>
+    <color name="text_color_primary_alpha_50">@color/day_night_alpha_50</color>
+    <color name="text_color_primary_alpha_40">@color/day_night_alpha_40</color>
+    <color name="text_color_primary_alpha_30">@color/day_night_alpha_30</color>
+    <color name="text_color_primary_alpha_20">@color/day_night_alpha_20</color>
+    <color name="text_color_secondary">#808080</color>
 
     <color name="console_view_debug">#DFE0E0E0</color>
     <color name="console_view_verbose">#7F7F80</color>
 
     <color name="layout_hierarchy_view_level_beam_5">@color/md_lime_500</color>
 
+    <color name="dialog_button_advanced_settings">@color/md_blue_gray_200</color>
     <color name="dialog_button_default">#03A9F4</color>
     <color name="dialog_button_caution">#E57373</color>
     <color name="dialog_button_warn">#F57C00</color>
     <color name="dialog_button_attraction">#C7A4FF</color>
     <color name="dialog_button_hint">#0DA798</color>
+    <color name="dialog_button_manager">@color/md_deep_purple_100</color>
     <color name="dialog_button_reset">#BCAAA4</color>
+    <color name="dialog_button_not_recommended">#BCAAA4</color>
     <color name="dialog_button_unavailable">@color/md_gray_700</color>
     <color name="dialog_button_finish">#009624</color>
     <color name="dialog_button_success">@color/dialog_button_finish</color>
     <color name="dialog_button_error">#4FC3F7</color>
     <color name="dialog_button_failure">@color/dialog_button_error</color>
+
+    <color name="dialog_progress_gray_background_tint">@color/md_gray_700</color>
+
+    <color name="dialog_options_button_tint">#DEA9A9A9</color>
 
     <color name="item_background">#333333</color>
     <color name="item_background_dark">@color/dawn_full</color>
@@ -49,9 +62,11 @@
     <color name="github_avatar_border">#26E2E5EA</color>
     <color name="github_color_fg_default">@color/prefTextColorPrimary</color>
     <color name="github_color_fg_muted">@color/prefTextColorSecondary</color>
+    <color name="plugin_center_item_icon_border">#26E2E5EA</color>
 
     <color name="drawer_menu_group_text_color">#808080</color>
     <color name="drawer_menu_item_text_color">#9A9A9A</color>
+    <color name="drawer_menu_group_divider_color">#323232</color>
 
     <color name="tab_indicator">#80202020</color>
     <color name="tab_text">#A0202020</color>
@@ -62,6 +77,8 @@
     <color name="prefTextColorPrimary">#9A9A9A</color>
     <color name="prefTextColorSecondary">#808080</color>
 
+    <color name="explorer_file_operation_button">@color/md_gray_600</color>
+    <color name="explorer_category_operation_button">@color/md_gray_500</color>
     <color name="project_toolbar_button">#A9AAAB</color>
     <color name="project_toolbar_title">#A9AAAB</color>
 

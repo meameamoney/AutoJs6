@@ -9,11 +9,11 @@ import android.view.accessibility.AccessibilityNodeInfo
 import org.autojs.autojs.core.accessibility.AccessibilityTool.Companion.DEFAULT_A11Y_SERVICE_START_TIMEOUT
 import org.autojs.autojs.core.accessibility.SimpleActionAutomator.Companion.AccessibilityEventCallback
 import org.autojs.autojs.core.automator.AccessibilityEventWrapper
-import org.autojs.autojs.event.EventDispatcher
 import org.autojs.autojs.core.pref.Language
+import org.autojs.autojs.event.EventDispatcher
 import org.autojs.autojs.ui.main.drawer.DrawerFragment.Companion.Event.AccessibilityServiceStateChangedEvent
 import org.greenrobot.eventbus.EventBus
-import java.util.TreeMap
+import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -21,7 +21,7 @@ import java.util.concurrent.locks.ReentrantLock
 
 /**
  * Created by Stardust on May 2, 2017.
- * Modified by SuperMonster003 as of Mar 20, 2022.
+ * Modified by SuperMonster003 as of Jan 7, 2026.
  */
 open class AccessibilityService : android.accessibilityservice.AccessibilityService() {
 
@@ -30,7 +30,9 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
     var fastRootInActiveWindow: AccessibilityNodeInfo? = null
     var bridge: AccessibilityBridge? = null
 
-    private val eventBox = TreeMap<Int, AccessibilityEventCallback?>()
+    // eventType -> (ownerId -> callback)
+    private val eventBox = HashMap<Int, MutableMap<String, AccessibilityEventCallback?>>()
+    private val eventBoxLock = Any()
 
     private val gestureEventDispatcher = EventDispatcher<GestureListener>()
 
@@ -43,23 +45,66 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
             AccessibilityEvent::class.java.getField(
                 "TYPE_${event.uppercase(Language.getPrefLanguage().locale)}"
             ).get(null) as Int
-        } catch (unused: NoSuchFieldException) {
+        } catch (_: NoSuchFieldException) {
             throw IllegalArgumentException("Unknown event: $event")
         }
     }
 
-    fun addAccessibilityEventCallback(name: String, callback: AccessibilityEventCallback?) {
-        eventBox[eventNameToType(name)] = callback
+    fun addAccessibilityEventCallback(ownerId: String, name: String, callback: AccessibilityEventCallback?) {
+        val type = eventNameToType(name)
+        synchronized(eventBoxLock) {
+            val bucket = eventBox.getOrPut(type) { HashMap() }
+            if (callback == null) {
+                bucket.remove(ownerId)
+                if (bucket.isEmpty()) eventBox.remove(type)
+            } else {
+                bucket[ownerId] = callback
+            }
+        }
     }
 
-    fun removeAccessibilityEventCallback(name: String) {
-        eventBox.remove(eventNameToType(name))
+    fun removeAccessibilityEventCallback(ownerId: String, name: String) {
+        val type = eventNameToType(name)
+        synchronized(eventBoxLock) {
+            val bucket = eventBox[type] ?: return
+            bucket.remove(ownerId)
+            if (bucket.isEmpty()) eventBox.remove(type)
+        }
+    }
+
+    fun removeAllAccessibilityEventCallbacks(ownerId: String) {
+        synchronized(eventBoxLock) {
+            val it = eventBox.entries.iterator()
+            while (it.hasNext()) {
+                val entry = it.next()
+                entry.value.remove(ownerId)
+                if (entry.value.isEmpty()) it.remove()
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         instance = this
         val type = event.eventType
-        eventBox[type]?.onAccessibilityEvent(AccessibilityEventWrapper(event))
+
+        // Mark service as operational when we receive the first accessibility event.
+        // zh-CN: 当收到首个无障碍事件时, 将服务标记为可工作状态.
+        markOperationalStateIfNeeded()
+
+        // Snapshot callbacks to avoid holding lock while invoking user code.
+        // zh-CN: 为回调建立快照, 以避免在调用用户代码时持锁.
+        val callbacks: List<AccessibilityEventCallback> = synchronized(eventBoxLock) {
+            val bucket = eventBox[type] ?: return@synchronized emptyList()
+            bucket.values.filterNotNull().toList()
+        }
+
+        if (callbacks.isNotEmpty()) {
+            val wrapper = AccessibilityEventWrapper(event)
+            callbacks.forEach { cb ->
+                cb.onAccessibilityEvent(wrapper)
+            }
+        }
+
         if (containsAllEventTypes || eventTypes.contains(type)) {
             if (type == TYPE_WINDOW_STATE_CHANGED || type == TYPE_VIEW_FOCUSED) {
                 rootInActiveWindow?.also { fastRootInActiveWindow = it }
@@ -67,11 +112,9 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
             for ((_, delegate) in delegates) {
                 val types = delegate.eventTypes
                 if (types == null || types.contains(type)) {
-                    // val start = System.currentTimeMillis()
                     if (delegate.onAccessibilityEvent(this@AccessibilityService, event)) {
                         break
                     }
-                    // Log.v(TAG, "millis: " + (System.currentTimeMillis() - start) + " delegate: " + delegate::class.java.name)
                 }
             }
         }
@@ -101,11 +144,7 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
     }
 
     override fun getRootInActiveWindow(): AccessibilityNodeInfo? {
-        return try {
-            super.getRootInActiveWindow()
-        } catch (e: Exception) {
-            null
-        }
+        return runCatching { super.getRootInActiveWindow() }.getOrNull()
     }
 
     override fun onDestroy() {
@@ -113,6 +152,8 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
 
         instance = null
         bridge = null
+
+        resetOperationalState()
 
         mEventExecutor?.shutdownNow()
         callback?.onDisconnected()
@@ -148,7 +189,12 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
 
         private val LOCK = ReentrantLock()
         private val ENABLED = LOCK.newCondition()
+        private val OPERATIONAL = LOCK.newCondition()
+
         private var callback: AccessibilityServiceCallback? = null
+
+        @Volatile
+        var hasOperationalState = false
 
         var instance: AccessibilityService? = null
             private set
@@ -162,6 +208,27 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
         val stickOnKeyObserver = OnKeyListener.Observer()
 
         fun hasInstance() = instance != null
+
+        private fun markOperationalStateIfNeeded() {
+            if (hasOperationalState) return
+            LOCK.lock()
+            try {
+                if (hasOperationalState) return
+                hasOperationalState = true
+                OPERATIONAL.signalAll()
+            } finally {
+                LOCK.unlock()
+            }
+        }
+
+        private fun resetOperationalState() {
+            LOCK.lock()
+            try {
+                hasOperationalState = false
+            } finally {
+                LOCK.unlock()
+            }
+        }
 
         fun addDelegate(uniquePriority: Int, delegate: AccessibilityDelegate) {
             // @Hint by 抠脚本人 (https://github.com/little-alei) on Jul 10, 2023.
@@ -177,13 +244,10 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
             }
         }
 
-        fun stop() = try {
+        fun stop() = runCatching {
             instance?.disableSelf()
             instance = null
-            true
-        } catch (e: Exception) {
-            false
-        }
+        }.isSuccess
 
         fun waitForStarted(timeout: Long = DEFAULT_A11Y_SERVICE_START_TIMEOUT): Boolean {
             if (hasInstance()) {
@@ -207,9 +271,37 @@ open class AccessibilityService : android.accessibilityservice.AccessibilityServ
             }
         }
 
+        // Wait until the service becomes operational (not only connected).
+        // zh-CN: 等待服务进入可工作状态 (不只是已连接).
+        fun waitForOperational(timeout: Long = DEFAULT_A11Y_SERVICE_START_TIMEOUT): Boolean {
+            if (hasInstance() && hasOperationalState) {
+                return true
+            }
+            LOCK.lock()
+            try {
+                if (hasInstance() && hasOperationalState) {
+                    return true
+                }
+                if (timeout == -1L) {
+                    OPERATIONAL.await()
+                    return true
+                }
+                return OPERATIONAL.await(timeout, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                e.printStackTrace()
+                return false
+            } finally {
+                LOCK.unlock()
+            }
+        }
+
         @JvmStatic
         fun clearAccessibilityEventCallback() {
-            instance?.eventBox?.clear()
+            instance?.let { svc ->
+                synchronized(svc.eventBoxLock) {
+                    svc.eventBox.clear()
+                }
+            }
         }
 
         fun setCallback(listener: AccessibilityServiceCallback?) {

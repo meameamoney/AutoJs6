@@ -5,12 +5,17 @@ import io.github.g00fy2.versioncompare.Version
 import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
 import org.autojs.autojs.core.automator.UiObject
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.NumberExtensions.jsString
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
-import org.autojs.autojs.extension.ScriptableObjectExtensions.inquire
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component2
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component3
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component4
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.NumberExtensions.jsString
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableObjectExtensions.inquire
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.ScreenMetrics
 import org.autojs.autojs.runtime.api.augment.Augmentable
@@ -58,7 +63,7 @@ class Global(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
     )
 
     override val selfAssignmentFunctions = listOf(
-        "toString",
+        "toString" to AS_LITERAL_TO_STRING,
         ::TODO.name,
         ::isUiThread.name,
         ::isJavaObject.name,
@@ -107,11 +112,13 @@ class Global(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
     override val selfAssignmentGetters = listOf<Pair<String, Supplier<Any?>>>(
         "WIDTH" to Supplier { ScreenMetrics.deviceScreenWidth },
         "HEIGHT" to Supplier { ScreenMetrics.deviceScreenHeight },
-        "Promise" to Supplier { scriptRuntime.js_Promise },
-        "ResultAdapter" to Supplier { scriptRuntime.js_ResultAdapter },
+        "axios" to Supplier { scriptRuntime.js_mod_axios },
+        "cheerio" to Supplier { scriptRuntime.js_mod_cheerio },
+        "dayjs" to Supplier { scriptRuntime.js_mod_dayjs },
+        "i18n" to Supplier { scriptRuntime.js_mod_i18n },
     )
 
-    companion object {
+    companion object : ArgumentGuards() {
 
         @Suppress("FunctionName")
         @JvmStatic
@@ -500,22 +507,22 @@ class Global(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
             when (version) {
                 is Number -> coerceNumber(version, 0).let { num ->
                     when {
-                        num.toInt() == 6 -> {
+                        num.toInt() in 2..9 -> {
                             requiresAutojsVersion(scriptRuntime, arrayOf(num.toString()))
                         }
                         else -> {
                             require(num.toInt() >= 461) {
-                                "指定的 AutoJs6 应用版本号需大于 461"
+                                globalContext.getString(R.string.error_specified_autojs6_version_number_must_be_greater_than_461)
                             }
                             require(BuildConfig.VERSION_CODE >= num.toInt()) {
-                                "AutoJs6 应用版本号需不低于 ${num.jsString}"
+                                globalContext.getString(R.string.error_autojs6_version_number_must_not_be_lower_than_num, num.jsString)
                             }
                         }
                     }
                 }
                 else -> coerceString(version).let { ver ->
                     require(Version(BuildConfig.VERSION_NAME).isAtLeast(Version(ver))) {
-                        "AutoJs6 应用版本需不低于 $ver"
+                        globalContext.getString(R.string.error_autojs6_version_must_not_be_lower_than_ver, ver)
                     }
                 }
             }
@@ -586,7 +593,7 @@ class Global(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
             when {
                 base.isJsNullish() -> base = scriptRuntime.scale.baseX
                 base is Number -> require(RhinoUtils.isInteger(base)) { "Scale base ${base.jsBrief()} must be a positive integer for cX" }
-                else -> throw WrappedIllegalArgumentException("Argument base ${base.jsBrief()} for cX must be a number if provided")
+                else -> throw WrappedIllegalArgumentException("Argument \"base\" ${base.jsBrief()} for cX must be a number if provided")
             }
             return@ensureArgumentsAtMost (deviceWidth * num / coerceIntNumber(base)).roundToLong().toDouble()
         }
@@ -610,7 +617,7 @@ class Global(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
             when {
                 base.isJsNullish() -> base = scriptRuntime.scale.baseY
                 base is Number -> require(RhinoUtils.isInteger(base)) { "Scale base ${base.jsBrief()} must be a positive integer for cY" }
-                else -> throw WrappedIllegalArgumentException("Argument base ${base.jsBrief()} for cY must be a number if provided")
+                else -> throw WrappedIllegalArgumentException("Argument \"base\" ${base.jsBrief()} for cY must be a number if provided")
             }
             return@ensureArgumentsAtMost (deviceHeight * num / coerceIntNumber(base)).roundToLong().toDouble()
         }

@@ -4,7 +4,7 @@ import com.zqc.opencc.android.lib.ChineseConverter
 import com.zqc.opencc.android.lib.ConversionType
 import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoSingletonFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.api.augment.Invokable
 import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
@@ -71,7 +71,7 @@ object OpenCC : Augmentable(), Invokable {
             throw WrappedIllegalArgumentException("Unknown type \"$type\" for opencc")
         }
         is ConversionType -> ChineseConverter.convert(coerceString(s), type, globalContext)
-        else -> throw WrappedIllegalArgumentException("Argument type ${type.jsBrief()} for opencc.convert is invalid")
+        else -> throw WrappedIllegalArgumentException("Argument \"type\" ${type.jsBrief()} for opencc.convert is invalid")
     }
 
     /* OpenCC internal conversion. */

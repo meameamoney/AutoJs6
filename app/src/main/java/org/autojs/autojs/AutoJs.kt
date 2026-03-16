@@ -2,18 +2,22 @@ package org.autojs.autojs
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.util.Log
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import org.autojs.autojs.core.accessibility.AccessibilityTool
 import org.autojs.autojs.core.accessibility.Capture
 import org.autojs.autojs.core.accessibility.LayoutInspector.CaptureAvailableListener
 import org.autojs.autojs.core.console.GlobalConsole
 import org.autojs.autojs.execution.ScriptExecutionGlobalListener
 import org.autojs.autojs.external.fileprovider.AppFileProvider
+import org.autojs.autojs.ipc.LayoutInspectEvent
+import org.autojs.autojs.ipc.LayoutInspectEventBus
+import org.autojs.autojs.pluginclient.DevPluginService
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.AppUtils
 import org.autojs.autojs.runtime.api.AppUtils.Companion.ActivityShortForm
@@ -23,53 +27,83 @@ import org.autojs.autojs.ui.floating.FullScreenFloatyWindow
 import org.autojs.autojs.ui.floating.layoutinspector.LayoutBoundsFloatyWindow
 import org.autojs.autojs.ui.floating.layoutinspector.LayoutHierarchyFloatyWindow
 import org.autojs.autojs.util.RhinoUtils.isBackgroundThread
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import org.autojs.autojs.inrt.autojs.AutoJs as AutoJsInrt
 
 /**
  * Created by Stardust on Apr 2, 2017.
- * Modified by SuperMonster003 as of Dec 1, 2021.
  * Transformed by SuperMonster003 on Oct 10, 2022.
  * Modified by LZX284 (https://github.com/LZX284) as of Sep 30, 2023.
+ * Modified by SuperMonster003 as of Jan 17, 2026.
  */
 open class AutoJs(appContext: Application) : AbstractAutoJs(appContext) {
 
+    internal val devPluginService by lazy {
+        DevPluginService(application)
+    }
+
     // @Thank to Zen2H
-    private val mPrintExecutor = Executors.newSingleThreadExecutor()
+    // Use bounded queue to prevent log flooding from blocking the whole channel.
+    // zh-CN: 使用有界队列避免日志洪泛导致整个通道被阻塞.
+    private val mPrintExecutor = ThreadPoolExecutor(
+        1,
+        1,
+        0L,
+        TimeUnit.MILLISECONDS,
+        ArrayBlockingQueue(2048),
+        ThreadPoolExecutor.DiscardOldestPolicy(),
+    )
 
     private val mA11yTool = AccessibilityTool(appContext)
+
+    private val mJob = Job()
+    private val mScope = CoroutineScope(Dispatchers.Main.immediate + mJob)
 
     init {
         scriptEngineService.registerGlobalScriptExecutionListener(ScriptExecutionGlobalListener())
 
-        LocalBroadcastManager.getInstance(appContext).registerReceiver(object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                try {
-                    val action = intent.action ?: return
-                    when {
-                        action.equals(LayoutBoundsFloatyWindow::class.java.name, true) -> {
-                            mA11yTool.ensureService()
-                            capture(object : LayoutInspectFloatyWindow {
-                                override fun create(capture: Capture) = LayoutBoundsFloatyWindow(capture, context, true)
-                            })
-                        }
-                        action.equals(LayoutHierarchyFloatyWindow::class.java.name, true) -> {
-                            mA11yTool.ensureService()
-                            capture(object : LayoutInspectFloatyWindow {
-                                override fun create(capture: Capture) = LayoutHierarchyFloatyWindow(capture, context, true)
-                            })
-                        }
+        // @Archived by SuperMonster003 on Sep 27, 2025.
+        //  ! LocalBroadcastManager is deprecated.
+        //  ! zh-CN: LocalBroadcastManager 已被弃用.
+        //  # LocalBroadcastManager.getInstance(appContext).registerReceiver(object : BroadcastReceiver() {
+        //  #     override fun onReceive(context: Context, intent: Intent) {
+        //  #         ... ...
+        //  #         val action = intent.action ?: return
+        //  #         when {
+        //  #             action.equals(LayoutBoundsFloatyWindow::class.java.name, true) -> { ... ... }
+        //  #             action.equals(LayoutHierarchyFloatyWindow::class.java.name, true) -> { ... ... }
+        //  #         }
+        //  #         ... ...
+        //  #     }
+        //  # }, IntentFilter().apply {
+        //  #     addAction(LayoutBoundsFloatyWindow::class.java.name)
+        //  #     addAction(LayoutHierarchyFloatyWindow::class.java.name)
+        //  # })
+
+        LayoutInspectEventBus.events.onEach { event ->
+            try {
+                when (event) {
+                    LayoutInspectEvent.ShowLayoutBounds -> {
+                        mA11yTool.ensureService()
+                        capture(object : LayoutInspectFloatyWindow {
+                            override fun create(capture: Capture) = LayoutBoundsFloatyWindow(capture, appContext, true)
+                        })
                     }
-                } catch (e: Exception) {
-                    if (isBackgroundThread()) {
-                        throw e
+                    LayoutInspectEvent.ShowLayoutHierarchy -> {
+                        mA11yTool.ensureService()
+                        capture(object : LayoutInspectFloatyWindow {
+                            override fun create(capture: Capture) = LayoutHierarchyFloatyWindow(capture, appContext, true)
+                        })
                     }
                 }
+            } catch (e: Exception) {
+                if (isBackgroundThread()) {
+                    throw e
+                }
             }
-        }, IntentFilter().apply {
-            addAction(LayoutBoundsFloatyWindow::class.java.name)
-            addAction(LayoutHierarchyFloatyWindow::class.java.name)
-        })
+        }.launchIn(mScope)
     }
 
     private interface LayoutInspectFloatyWindow {
@@ -93,7 +127,6 @@ open class AutoJs(appContext: Application) : AbstractAutoJs(appContext) {
     override fun createAppUtils(context: Context) = AppUtils(context, AppFileProvider.AUTHORITY)
 
     override fun createGlobalConsole(): GlobalConsole {
-        val devPluginService by lazy { App.app.devPluginService }
         return object : GlobalConsole(uiHandler) {
             override fun println(level: Int, charSequence: CharSequence): String {
                 return super.println(level, charSequence).also {
@@ -129,6 +162,10 @@ open class AutoJs(appContext: Application) : AbstractAutoJs(appContext) {
             BroadcastShortForm.INSPECT_LAYOUT_BOUNDS, BroadcastShortForm.LAYOUT_BOUNDS, BroadcastShortForm.BOUNDS,
             BroadcastShortForm.INSPECT_LAYOUT_HIERARCHY, BroadcastShortForm.LAYOUT_HIERARCHY, BroadcastShortForm.HIERARCHY,
         ).forEach { putProperty(it.fullName, it.className) }
+    }
+
+    fun clear() {
+        mJob.cancel()
     }
 
     companion object {

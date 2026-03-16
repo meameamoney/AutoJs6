@@ -5,13 +5,15 @@
 *.jks
 *.log
 *.ffs_db
+*.patch
+*.salive
+.tmp_*.txt
 
 .DS_Store
 .externalNativeBuild
 output.json
 output-metadata.json
 desktop.ini
-sync.ffs_db
 
 .bak/
 .git/
@@ -28,10 +30,13 @@ sync.ffs_db
 /build/
 /libs/**/build/
 /modules/**/build/
+/plugin-api/**/build/
 /captures/
 /release/
 /releases/
 /tools/
+
+/gradle/wrappers/backup/
 
 /local.properties
 /sign.properties

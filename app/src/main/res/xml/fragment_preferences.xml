@@ -12,7 +12,7 @@
             app:title="@string/text_app_language"
             app:itemKeys="@array/keys_app_language"
             app:itemValues="@array/values_app_language"
-            app:itemDefaultKey="@string/key_app_language_auto"
+            app:itemDefaultKey="@string/default_key_app_language"
             app:neutralText="@string/dialog_button_system_settings"
             app:neutralTextShort="@string/dialog_button_system_settings_simplified"
             app:longClickPrompt="@string/description_app_language_preference"
@@ -24,7 +24,7 @@
             app:title="@string/text_night_mode"
             app:itemKeys="@array/keys_night_mode"
             app:itemValues="@array/values_night_mode"
-            app:itemDefaultKey="@string/key_night_mode_follow_system"
+            app:itemDefaultKey="@string/default_key_night_mode"
             app:longClickPrompt="@string/description_night_mode_preference"
             app:longClickPromptMore="@string/description_night_mode_preference_more" />
 
@@ -40,7 +40,7 @@
             app:title="@string/text_keep_screen_on_when_in_foreground"
             app:itemKeys="@array/keys_keep_screen_on_when_in_foreground"
             app:itemValues="@array/values_keep_screen_on_when_in_foreground"
-            app:itemDefaultKey="@string/key_keep_screen_on_when_in_foreground_disabled"
+            app:itemDefaultKey="@string/default_key_keep_screen_on_when_in_foreground"
             app:longClickPrompt="@string/description_keep_screen_on_when_in_foreground_preference" />
 
     </org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory>
@@ -55,10 +55,28 @@
             app:title="@string/text_documentation_source"
             app:itemKeys="@array/keys_documentation_source"
             app:itemValues="@array/values_documentation_source"
-            app:itemDefaultKey="@string/key_documentation_source_local"
+            app:itemDefaultKey="@string/default_key_documentation_source"
             app:onConfirmPrompt="@string/prompt_restart_is_needed_for_docs_source_switch"
             app:longClickPrompt="@string/description_documentation_source_preference"
             app:longClickPromptMore="@string/description_documentation_source_preference_more" />
+
+        <org.autojs.autojs.ui.settings.RestartStrategyPreference
+            app:layout="@layout/preference_custom"
+            app:key="@string/key_restart_strategy"
+            app:title="@string/text_restart_strategy"
+            app:itemKeys="@array/keys_restart_strategy"
+            app:itemValues="@array/values_restart_strategy"
+            app:itemDefaultKey="@string/default_key_restart_strategy"
+            app:longClickPrompt="@string/description_restart_strategy" />
+
+        <org.autojs.autojs.ui.settings.LauncherIconPreference
+            app:layout="@layout/preference_custom"
+            app:key="@string/key_launcher_icon"
+            app:title="@string/text_launcher_icon_title"
+            app:itemKeys="@array/keys_launcher_icon"
+            app:itemValues="@array/values_launcher_icon"
+            app:itemDefaultKey="@string/default_key_launcher_icon"
+            app:longClickPrompt="@string/description_launcher_icon_preference" />
 
         <org.autojs.autojs.ui.settings.LauncherShortcutsPreference
             app:layout="@layout/preference_custom"
@@ -67,26 +85,17 @@
             app:summary="@string/summary_text_launcher_shortcuts"
             app:longClickPrompt="@string/description_launcher_shortcuts" />
 
-        <org.autojs.autojs.ui.settings.WorkingDirectoryPreference
-            app:layout="@layout/preference_custom"
-            app:key="@string/key_change_working_dir"
-            app:title="@string/text_change_working_dir"
-            app:longClickPrompt="@string/description_change_working_dir_preference" />
-
-        <org.autojs.autojs.ui.settings.RootModePreference
-            app:layout="@layout/preference_custom"
-            app:key="@string/key_root_mode"
-            app:title="@string/text_root_mode_title"
-            app:itemKeys="@array/keys_root_mode"
-            app:itemValues="@array/values_root_mode"
-            app:itemDefaultKey="@string/key_root_mode_auto_detect"
-            app:longClickPrompt="@string/description_root_mode_preference" />
-
     </org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory>
 
     <org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory
         app:layout="@layout/preference_category_custom"
         app:title="@string/text_file_explorer">
+
+        <org.autojs.autojs.ui.settings.WorkingDirectoryPreference
+            app:layout="@layout/preference_custom"
+            app:key="@string/key_change_working_dir"
+            app:title="@string/text_working_dir_path"
+            app:longClickPrompt="@string/description_change_working_dir_preference" />
 
         <org.autojs.autojs.ui.settings.HiddenFilesPreference
             app:layout="@layout/preference_custom"
@@ -101,10 +110,26 @@
             app:layout="@layout/preference_custom"
             app:key="@string/key_file_extensions"
             app:title="@string/text_file_extensions_title"
-            app:itemValues="@array/values_file_extensions"
             app:itemKeys="@array/keys_file_extensions"
+            app:itemValues="@array/values_file_extensions"
             app:itemDefaultKey="@string/default_key_file_extensions"
             app:longClickPrompt="@string/description_file_extensions_preference" />
+
+    </org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory>
+
+    <org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory
+        app:layout="@layout/preference_category_custom"
+        app:title="@string/text_timed_task">
+
+        <org.autojs.autojs.ui.settings.TimedTaskBackendPreference
+            app:layout="@layout/preference_custom"
+            app:key="@string/key_timed_task_backend"
+            app:title="@string/text_timed_task_backend_title"
+            app:itemKeys="@array/keys_timed_task_backend"
+            app:itemValues="@array/values_timed_task_backend"
+            app:itemDefaultKey="@string/default_key_timed_task_backend"
+            app:longClickPrompt="@string/description_timed_task_backend"
+            app:longClickPromptMore="@string/description_timed_task_backend_more" />
 
     </org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory>
 
@@ -153,6 +178,21 @@
             app:title="@string/text_guard_mode"
             app:summary="@string/summary_guard_mode" />
 
+        <org.autojs.autojs.ui.settings.RootModePreference
+            app:layout="@layout/preference_custom"
+            app:key="@string/key_root_mode"
+            app:title="@string/text_root_mode_title"
+            app:itemKeys="@array/keys_root_mode"
+            app:itemValues="@array/values_root_mode"
+            app:itemDefaultKey="@string/default_key_root_mode"
+            app:longClickPrompt="@string/description_root_mode_preference" />
+
+        <org.autojs.autojs.ui.settings.ScreenCaptureRequestDelayPreference
+            app:layout="@layout/preference_custom"
+            app:key="@string/key_screen_capture_request_delay"
+            app:title="@string/text_screen_capture_request_delay"
+            app:longClickPrompt="@string/description_screen_capture_request_delay" />
+
     </org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory>
 
     <org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory
@@ -196,6 +236,14 @@
             app:summary="@string/summary_extending_js_build_in_objects"
             app:longClickPrompt="@string/description_extending_js_build_in_objects" />
 
+        <org.autojs.autojs.theme.preference.ThemeColorSwitchPreference
+            app:layout="@layout/preference_custom"
+            app:key="@string/key_rhino_java_primitive_wrap"
+            app:defaultValue="@bool/pref_rhino_java_primitive_wrap"
+            app:title="@string/text_rhino_java_primitive_wrap"
+            app:summary="@string/summary_rhino_java_primitive_wrap"
+            app:longClickPrompt="@string/description_rhino_java_primitive_wrap" />
+
     </org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory>
 
     <org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory
@@ -221,12 +269,12 @@
             app:title="@string/text_manage_ignored_updates"
             app:longClickPrompt="@string/description_manage_ignored_updates_preference" />
 
-        <org.autojs.autojs.ui.settings.VersionHistoryPreference
+        <org.autojs.autojs.ui.settings.ReleaseHistoryPreference
             app:layout="@layout/preference_custom"
-            app:key="@string/key_version_histories"
-            app:title="@string/text_version_histories"
-            app:summary="@string/summary_version_histories_preference"
-            app:longClickPrompt="@string/description_version_histories_preference" />
+            app:key="@string/key_release_history"
+            app:title="@string/text_release_history"
+            app:summary="@string/summary_release_history_preference"
+            app:longClickPrompt="@string/description_release_history_preference" />
 
     </org.autojs.autojs.theme.preference.ThemeColorPreferenceCategory>
 

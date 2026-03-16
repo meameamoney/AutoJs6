@@ -3,10 +3,10 @@ package org.autojs.autojs.runtime.api.augment.util
 import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoFunctionObjectBody
 import org.autojs.autojs.annotation.RhinoStandardFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.ArrayExtensions.toNativeArray
-import org.autojs.autojs.extension.FlexibleArray.Companion.ensureArgumentsAtMost
-import org.autojs.autojs.extension.FlexibleArray.Companion.ensureArgumentsIsEmpty
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.IterableExtensions.toNativeArray
 import org.autojs.autojs.runtime.api.StringReadable
 import org.autojs.autojs.util.RhinoUtils
 import org.autojs.autojs.util.RhinoUtils.NOT_CONSTRUCTABLE
@@ -20,10 +20,10 @@ import org.mozilla.javascript.Scriptable
 class MorseCodeNativeObject(val parser: MorseCodeParser) : NativeObject(), StringReadable {
 
     private val mFunctionNames = arrayOf(
+        "toString",
         ::getPattern.name,
         ::getCode.name,
         ::vibrate.name,
-        "toString",
     )
 
     init {
@@ -37,7 +37,7 @@ class MorseCodeNativeObject(val parser: MorseCodeParser) : NativeObject(), Strin
     @RhinoFunctionObjectBody
     override fun toStringReadable() = toStringRhino(this)
 
-    companion object {
+    companion object : ArgumentGuards() {
 
         @JvmStatic
         @RhinoStandardFunctionInterface
@@ -77,7 +77,5 @@ class MorseCodeNativeObject(val parser: MorseCodeParser) : NativeObject(), Strin
             val (delay) = it
             (thisObj as MorseCodeNativeObject).parser.vibrate(if (!delay.isJsNullish()) Context.toNumber(delay) else 0.0)
         }
-
     }
-
 }

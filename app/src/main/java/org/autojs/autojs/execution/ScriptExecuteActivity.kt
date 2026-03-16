@@ -16,6 +16,7 @@ import android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
 import android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
 import android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
 import android.view.WindowManager
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.view.ViewCompat
@@ -36,15 +37,38 @@ import org.autojs.autojs.execution.ScriptExecution.AbstractScriptExecution
 import org.autojs.autojs.inrt.autojs.LoopBasedJavaScriptEngineWithDecryption
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.script.ScriptSource
+import org.autojs.autojs.util.IntentUtils.startSafely
 import org.autojs.autojs.util.ViewUtils
 import org.autojs.autojs6.R
 import org.mozilla.javascript.ContinuationPending
 
 /**
  * Created by Stardust on Feb 5, 2017.
- * Modified by SuperMonster003 as of Nov 15, 2023.
+ * Modified by SuperMonster003 as of Jan 20, 2026.
  */
 class ScriptExecuteActivity : AppCompatActivity(), OnActivityResultDelegate.DelegateHost {
+
+    private val mOnBackPressedCallback = object : OnBackPressedCallback(true) {
+
+        // override fun onBackPressed() {
+        //     val event = SimpleEvent()
+        //     emit("back_pressed", event)
+        //     if (!event.consumed) {
+        //         @Suppress("DEPRECATION", "KotlinRedundantDiagnosticSuppress")
+        //         super.onBackPressed()
+        //     }
+        // }
+
+        override fun handleOnBackPressed() {
+            val event = SimpleEvent()
+            emit("back_pressed", event)
+            if (event.consumed) return
+
+            isEnabled = false
+            onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
+        }
+    }
 
     private var mRuntime: ScriptRuntime? = null
     private var mExecutionListener: ScriptExecutionListener? = null
@@ -99,6 +123,8 @@ class ScriptExecuteActivity : AppCompatActivity(), OnActivityResultDelegate.Dele
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             ViewUtils.setNavigationBarBackgroundColor(this, getColor(R.color.black_alpha_44))
         }
+
+        onBackPressedDispatcher.addCallback(this, mOnBackPressedCallback)
 
         val executionId = intent.getIntExtra(EXTRA_EXECUTION_ID, ScriptExecution.NO_ID)
         if (executionId == ScriptExecution.NO_ID) {
@@ -159,10 +185,10 @@ class ScriptExecuteActivity : AppCompatActivity(), OnActivityResultDelegate.Dele
         mScriptEngine.setTag(ScriptEngine.TAG_SOURCE, mScriptSource)
         mExecutionListener!!.onStart(mScriptExecution)
 
-        if (isInrt) {
-            (mScriptEngine as LoopBasedJavaScriptEngineWithDecryption).execute(mScriptSource, executeCallback)
-        } else {
+        if (!isInrt) {
             (mScriptEngine as LoopBasedJavaScriptEngine).execute(mScriptSource, executeCallback)
+        } else {
+            (mScriptEngine as LoopBasedJavaScriptEngineWithDecryption).execute(mScriptSource, executeCallback)
         }
     }
 
@@ -194,16 +220,6 @@ class ScriptExecuteActivity : AppCompatActivity(), OnActivityResultDelegate.Dele
         super.onSaveInstanceState(outState)
         outState.putInt(EXTRA_EXECUTION_ID, mScriptExecution.id)
         emit("save_instance_state", outState)
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        val event = SimpleEvent()
-        emit("back_pressed", event)
-        if (!event.consumed) {
-            @Suppress("DEPRECATION", "KotlinRedundantDiagnosticSuppress")
-            super.onBackPressed()
-        }
     }
 
     override fun onPause() {
@@ -289,11 +305,10 @@ class ScriptExecuteActivity : AppCompatActivity(), OnActivityResultDelegate.Dele
         @JvmStatic
         fun execute(context: Context, manager: ScriptEngineManager, task: ScriptExecutionTask): ActivityScriptExecution {
             val execution = ActivityScriptExecution(manager, task)
-            val i = Intent(context, ScriptExecuteActivity::class.java)
+            Intent(context, ScriptExecuteActivity::class.java)
                 .putExtra(EXTRA_EXECUTION_ID, execution.id)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 .addFlags(task.config.intentFlags)
-            context.startActivity(i)
+                .startSafely(context)
             return execution
         }
     }

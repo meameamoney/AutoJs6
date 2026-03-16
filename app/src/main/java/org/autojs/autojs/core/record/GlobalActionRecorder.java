@@ -3,14 +3,13 @@ package org.autojs.autojs.core.record;
 import android.content.Context;
 import android.view.ContextThemeWrapper;
 import com.afollestad.materialdialogs.MaterialDialog;
-import org.autojs.autojs.app.DialogUtils;
+import org.autojs.autojs.util.DialogUtils;
 import org.autojs.autojs.app.GlobalAppContext;
 import org.autojs.autojs.core.pref.Pref;
 import org.autojs.autojs.core.record.inputevent.InputEventRecorder;
 import org.autojs.autojs.core.record.inputevent.InputEventToAutoFileRecorder;
 import org.autojs.autojs.core.record.inputevent.InputEventToRootAutomatorRecorder;
 import org.autojs.autojs.core.record.inputevent.TouchRecorder;
-import org.autojs.autojs.extension.MaterialDialogExtensions;
 import org.autojs.autojs.ui.common.ScriptOperations;
 import org.autojs.autojs.util.ClipboardUtils;
 import org.autojs.autojs.util.ViewUtils;
@@ -18,7 +17,6 @@ import org.autojs.autojs6.R;
 
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import static org.autojs.autojs.util.RhinoUtils.isBackgroundThread;
 import static org.autojs.autojs.util.RhinoUtils.isMainThread;
 
 /**
@@ -57,10 +55,9 @@ public class GlobalActionRecorder implements Recorder.OnStateChangedListener {
         return new TouchRecorder(mContext) {
             @Override
             protected InputEventRecorder createInputEventRecorder() {
-                if (Pref.rootRecordGeneratesBinary())
-                    return new InputEventToAutoFileRecorder(mContext);
-                else
-                    return new InputEventToRootAutomatorRecorder();
+                return Pref.rootRecordGeneratesBinary()
+                        ? new InputEventToAutoFileRecorder(mContext)
+                        : new InputEventToRootAutomatorRecorder(mContext);
             }
         };
     }
@@ -86,8 +83,9 @@ public class GlobalActionRecorder implements Recorder.OnStateChangedListener {
     }
 
     public int getState() {
-        if (mTouchRecorder == null)
+        if (mTouchRecorder == null) {
             return Recorder.STATE_NOT_START;
+        }
         return mTouchRecorder.getState();
     }
 
@@ -116,10 +114,11 @@ public class GlobalActionRecorder implements Recorder.OnStateChangedListener {
         }
         if (!mDiscard) {
             String code = getCode();
-            if (code != null)
+            if (code != null) {
                 handleRecordedScript(code);
-            else
+            } else {
                 handleRecordedFile(getPath());
+            }
         }
         for (Recorder.OnStateChangedListener listener : mOnStateChangedListeners) {
             listener.onStop();
@@ -154,14 +153,13 @@ public class GlobalActionRecorder implements Recorder.OnStateChangedListener {
     }
 
     private void handleRecordedFile(final String path) {
-        if (isBackgroundThread()) {
+        if (isMainThread()) {
+            new ScriptOperations(mContext, null)
+                    .importFile(path)
+                    .subscribe();
+        } else {
             GlobalAppContext.post(() -> handleRecordedFile(path));
-            return;
         }
-        new ScriptOperations(mContext, null)
-                .importFile(path)
-                .subscribe();
-
     }
 
     private void showRecordHandleDialog(final String script) {
@@ -184,8 +182,8 @@ public class GlobalActionRecorder implements Recorder.OnStateChangedListener {
                 .positiveText(R.string.dialog_button_confirm)
                 .positiveColorRes(R.color.dialog_button_attraction)
                 .canceledOnTouchOutside(false);
-        MaterialDialogExtensions.choiceWidgetThemeColor(builder);
-        DialogUtils.showDialog(builder.build());
+        DialogUtils.choiceWidgetThemeColor(builder);
+        DialogUtils.buildAndShowAdaptive(builder::build);
     }
 
     private String getString(int res) {

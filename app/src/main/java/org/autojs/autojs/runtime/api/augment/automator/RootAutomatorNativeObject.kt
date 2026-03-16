@@ -1,6 +1,6 @@
 package org.autojs.autojs.runtime.api.augment.automator
 
-import org.autojs.autojs.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.util.RhinoUtils
 import org.autojs.autojs.util.RhinoUtils.withRhinoContext
@@ -13,7 +13,7 @@ import org.autojs.autojs.core.inputevent.RootAutomator as CoreRootAutomator
 import org.mozilla.javascript.ScriptRuntime as RhinoScriptRuntime
 
 @Suppress("unused")
-class RootAutomatorNativeObject(scriptRuntime: ScriptRuntime, waitForReady: Any? = false) : NativeObject() {
+class RootAutomatorNativeObject(private val scriptRuntime: ScriptRuntime, waitForReady: Any? = false) : NativeObject() {
 
     private val mRootAutomatorObject: Scriptable = run {
         val rootAutomator = when (waitForReady) {
@@ -28,8 +28,8 @@ class RootAutomatorNativeObject(scriptRuntime: ScriptRuntime, waitForReady: Any?
         defineProperty("__ra__", mRootAutomatorObject, READONLY or DONTENUM or PERMANENT)
     }
 
-    override fun has(name: String?): Boolean {
-        return mRootAutomatorObject.has(name) || super.has(name)
+    override fun has(name: String, start: Scriptable): Boolean {
+        return mRootAutomatorObject.has(name, start) || super.has(name, start)
     }
 
     override fun get(name: String, start: Scriptable): Any? {
@@ -46,7 +46,7 @@ class RootAutomatorNativeObject(scriptRuntime: ScriptRuntime, waitForReady: Any?
         //  #     'touchDown', 'touchUp', 'touchMove', 'getDefaultId', 'setDefaultId', 'exit',
         //  # ]
         return when (val o = mRootAutomatorObject.prop(name)) {
-            is BaseFunction -> withRhinoContext { cx ->
+            is BaseFunction -> withRhinoContext(scriptRuntime) { cx ->
                 BoundFunction(cx, mRootAutomatorObject, o, mRootAutomatorObject, arrayOf())
             }
             else -> super.get(name, start)

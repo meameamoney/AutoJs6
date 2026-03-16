@@ -3,11 +3,16 @@ package org.autojs.autojs.ui.edit.editor
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.text.Layout
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.ScaleGestureDetector.SimpleOnScaleGestureListener
+import android.view.WindowManager
 import com.afollestad.materialdialogs.MaterialDialog
 import io.reactivex.Observable
 import org.autojs.autojs.core.pref.Pref.getEditorTextSize
@@ -51,8 +56,9 @@ import kotlin.math.floor
  * Modified by project: https://github.com/980008027/JsDroidEditor
  */
 /**
- * Modified by SuperMonster003 as of Jul 16, 2023.
  * Transformed by SuperMonster003 on Jul 16, 2023.
+ * Modified by SuperMonster003 as of Jul 16, 2023.
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Feb 8, 2026.
  */
 class CodeEditor : HVScrollView {
 
@@ -63,6 +69,15 @@ class CodeEditor : HVScrollView {
         lastTextSize = getEditorTextSize(pxToSp(it.textSize).toInt())
         ThemeColorHelper.setThemeColorPrimary(it, true)
     }
+
+    // Whether the user is interacting with the editor via touch.
+    // zh-CN: 用户是否正在通过触摸与编辑器交互.
+    @Volatile
+    private var mUserTouching = false
+
+    // Public getter for streaming loader to prioritize scroll responsiveness.
+    // zh-CN: 给流式加载器使用的公开读取口, 用于优先保障滚动响应性.
+    fun isUserTouching(): Boolean = mUserTouching
 
     val lineCount
         get() = Observable.just(codeEditText.layout.lineCount)
@@ -128,8 +143,8 @@ class CodeEditor : HVScrollView {
             return if (s == e) "" else codeEditText.text?.substring(s, e) ?: ""
         }
 
-    private var mMinTextSize = context.getString(R.string.text_text_size_min_value).toInt()
-    private var mMaxTextSize = context.getString(R.string.text_text_size_max_value).toInt()
+    private var mMinTextSize = context.resources.getInteger(R.integer.editor_text_size_min_value)
+    private var mMaxTextSize = context.resources.getInteger(R.integer.editor_text_size_max_value)
     private var mTextViewRedoUndo = TextViewUndoRedo(codeEditText)
 
     private var mTheme: Theme? = null
@@ -145,12 +160,138 @@ class CodeEditor : HVScrollView {
     private var mFoundIndex = -1
     private var mLastScaleFactor = 1.0
 
+    private val mUiHandler = Handler(Looper.getMainLooper())
+
+    // Delay showing the loading dialog to avoid flicker for fast operations.
+    // zh-CN: 延迟显示加载对话框, 避免快速操作产生闪烁.
+    private val mProgressShowDelayMs = 1500L
+
+    // Once shown, keep the dialog visible for at least this duration to avoid flash.
+    // zh-CN: 对话框一旦出现, 至少显示一段时间, 避免一闪而过.
+    private val mProgressMinShowMs = 500L
+
+    private var mProgressRequested = false
+    private var mProgressShownAtMs = 0L
+    private var mProgressInteractive = false
+
+    private val mShowProgressRunnable = Runnable {
+        if (!mProgressRequested) return@Runnable
+        if (mProcessDialog?.isShowing == true) return@Runnable
+
+        mProcessDialog = MaterialDialog.Builder(context)
+            .content(R.string.text_in_progress)
+            // Text only, no progress spinner.
+            // zh-CN: 仅显示文字, 不使用进度圆圈动画.
+            .cancelable(false)
+            .canceledOnTouchOutside(false)
+            .show()
+
+        mProgressShownAtMs = SystemClock.uptimeMillis()
+
+        // Make it non-modal (optional) so user can scroll/view during loading.
+        // zh-CN: 可选地设置为非模态, 使用户在加载时仍可滚动/查看.
+        if (mProgressInteractive) {
+            mProcessDialog?.window?.let { w ->
+                w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                w.setDimAmount(0f)
+                w.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
+                w.addFlags(WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH)
+            }
+        }
+    }
+
     constructor(context: Context?) : super(context)
 
     constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs)
 
     init {
         applyScaleGesture()
+    }
+
+    fun refreshHighlightTokensIfAllowed() {
+        // Force a highlight refresh after bulk loading, when loading flags are cleared.
+        // zh-CN: 在批量加载结束且 loading 标记已清除后, 主动触发一次高亮刷新.
+        val t = codeEditText.text?.toString() ?: return
+        mJavaScriptHighlighter.updateTokens(t)
+    }
+
+    /**
+     * Show or hide a "processing" indicator.
+     *
+     * Behavior:
+     * - Delayed show to avoid flicker.
+     * - Minimum show time once visible.
+     * - Optional interactive mode: don't block touches and don't dim background.
+     *
+     * zh-CN:
+     * 显示或隐藏 "处理中" 提示.
+     *
+     * 行为:
+     * - 延迟显示以避免闪烁.
+     * - 一旦出现则保证最短展示时间.
+     * - 可选交互模式: 不拦截触摸/不压暗背景.
+     */
+    /**
+     * Show or hide a "processing" indicator.
+     *
+     * Behavior:
+     * - Delayed show to avoid flicker.
+     * - Minimum show time once visible.
+     * - Optional interactive mode: don't block touches and don't dim background.
+     *
+     * zh-CN:
+     * 显示或隐藏 "处理中" 提示.
+     *
+     * 行为:
+     * - 延迟显示以避免闪烁.
+     * - 一旦出现则保证最短展示时间.
+     * - 可选交互模式: 不拦截触摸/不压暗背景.
+     */
+    fun setProgress(progress: Boolean, interactive: Boolean = false) {
+        mProgressInteractive = interactive
+
+        if (progress) {
+            mProgressRequested = true
+
+            // If already showing, keep it.
+            // zh-CN: 若已显示则保持不变.
+            if (mProcessDialog?.isShowing == true) return
+
+            // Schedule delayed show.
+            // zh-CN: 延迟调度显示.
+            mUiHandler.removeCallbacks(mShowProgressRunnable)
+            mUiHandler.postDelayed(mShowProgressRunnable, mProgressShowDelayMs)
+            return
+        }
+
+        // Hide requested.
+        // zh-CN: 请求隐藏.
+        mProgressRequested = false
+        mUiHandler.removeCallbacks(mShowProgressRunnable)
+
+        val dlg = mProcessDialog
+        if (dlg == null || dlg.isShowing != true) {
+            mProcessDialog = null
+            return
+        }
+
+        val elapsed = SystemClock.uptimeMillis() - mProgressShownAtMs
+        val remain = (mProgressMinShowMs - elapsed).coerceAtLeast(0L)
+
+        if (remain == 0L) {
+            dlg.dismiss()
+            mProcessDialog = null
+            return
+        }
+
+        mUiHandler.postDelayed({
+            // Only dismiss if no new show request came in.
+            // zh-CN: 仅当没有新的显示请求时才 dismiss.
+            if (!mProgressRequested) {
+                runCatching { dlg.dismiss() }
+                mProcessDialog = null
+            }
+        }, remain)
     }
 
     private fun applyScaleGesture(key: String? = null) {
@@ -173,6 +314,25 @@ class CodeEditor : HVScrollView {
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN,
+            MotionEvent.ACTION_POINTER_DOWN,
+            MotionEvent.ACTION_MOVE,
+                -> {
+                // Mark touching as early as possible.
+                // zh-CN: 尽可能早地标记触摸中状态.
+                mUserTouching = true
+            }
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL,
+            MotionEvent.ACTION_POINTER_UP,
+                -> {
+                // Clear touching flag when gesture ends.
+                // zh-CN: 手势结束时清除触摸中标记.
+                mUserTouching = false
+            }
+        }
+
         return mScaleGestureDetector?.let {
             it.onTouchEvent(ev)
             !it.isInProgress && super.onTouchEvent(ev)
@@ -181,6 +341,14 @@ class CodeEditor : HVScrollView {
 
     override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
         super.onScrollChanged(l, t, oldl, oldt)
+
+        // Avoid scheduling extra invalidations during bulk loading.
+        // zh-CN: 批量加载期间避免额外调度 invalidate, 降低重绘压力.
+        if (codeEditText.isLoadingText()) {
+            codeEditText.invalidate()
+            return
+        }
+
         codeEditText.postInvalidate()
     }
 
@@ -232,6 +400,10 @@ class CodeEditor : HVScrollView {
         }
     }
 
+    fun clear() {
+        codeEditText.setText("")
+    }
+
     fun jumpToStart() {
         codeEditText.setSelection(0)
     }
@@ -252,15 +424,46 @@ class CodeEditor : HVScrollView {
         val layout = codeEditText.layout
         val line = LayoutHelper.getLineOfChar(layout, minOf(codeEditText.selectionStart, codeEditText.selectionEnd))
         if (line >= 0 && line < layout.lineCount) {
-            val lineEnd = layout.getLineEnd(line)
-            val text = codeEditText.text.toString()
-            val finalPosition = when {
-                lineEnd > 0 && text[lineEnd - 1] == '\n' -> {
-                    lineEnd - 1
-                }
-                else -> lineEnd
-            }
-            codeEditText.setSelection(finalPosition)
+            codeEditText.setSelection(getLineEndWithoutTrailingNewline(layout, line))
+        }
+    }
+
+    fun jumpToNextLine() {
+        val layout = codeEditText.layout
+        val cursor = minOf(codeEditText.selectionStart, codeEditText.selectionEnd)
+        val line = LayoutHelper.getLineOfChar(layout, cursor)
+        jumpToLinePreservingColumn(layout, line, line + 1, cursor)
+    }
+
+    fun jumpToPrevLine() {
+        val layout = codeEditText.layout
+        val cursor = minOf(codeEditText.selectionStart, codeEditText.selectionEnd)
+        val line = LayoutHelper.getLineOfChar(layout, cursor)
+        jumpToLinePreservingColumn(layout, line, line - 1, cursor)
+    }
+
+    private fun jumpToLinePreservingColumn(layout: Layout, fromLine: Int, targetLine: Int, cursor: Int) {
+        if (fromLine !in 0 until layout.lineCount || targetLine !in 0 until layout.lineCount) {
+            return
+        }
+        val fromLineStart = layout.getLineStart(fromLine)
+        val fromLineEnd = getLineEndWithoutTrailingNewline(layout, fromLine)
+        val fromLineCursor = cursor.coerceIn(fromLineStart, fromLineEnd)
+        val desiredColumn = fromLineCursor - fromLineStart
+
+        val targetLineStart = layout.getLineStart(targetLine)
+        val targetLineEnd = getLineEndWithoutTrailingNewline(layout, targetLine)
+        val targetCursor = (targetLineStart + desiredColumn).coerceAtMost(targetLineEnd)
+        codeEditText.setSelection(targetCursor)
+    }
+
+    private fun getLineEndWithoutTrailingNewline(layout: Layout, line: Int): Int {
+        val lineEnd = layout.getLineEnd(line)
+        val text = codeEditText.text ?: return lineEnd
+        return if (lineEnd > 0 && lineEnd <= text.length && text[lineEnd - 1] == '\n') {
+            lineEnd - 1
+        } else {
+            lineEnd
         }
     }
 
@@ -293,23 +496,17 @@ class CodeEditor : HVScrollView {
     }
 
     fun setReadOnly(readOnly: Boolean) {
-        codeEditText.isEnabled = !readOnly
+        codeEditText.setReadOnly(readOnly)
     }
 
     fun setRedoUndoEnabled(enabled: Boolean) {
         mTextViewRedoUndo.isEnabled = enabled
     }
 
-    fun setProgress(progress: Boolean) {
-        mProcessDialog?.dismiss()
-        mProcessDialog = when {
-            !progress -> null
-            else -> MaterialDialog.Builder(context)
-                .content(R.string.text_processing)
-                .progress(true, 0)
-                .cancelable(false)
-                .show()
-        }
+    fun markUndoRedoBaselineAsUnchanged() {
+        // Reset undo/redo history but keep current text intact.
+        // zh-CN: 重置 undo/redo 历史但保持当前文本不变.
+        mTextViewRedoUndo.resetHistoryAsUnchanged()
     }
 
     fun addCursorChangeCallback(callback: CursorChangeCallback?) {
@@ -323,6 +520,55 @@ class CodeEditor : HVScrollView {
     fun undo() = mTextViewRedoUndo.undo()
 
     fun redo() = mTextViewRedoUndo.redo()
+
+    // Expose current found index for UI logic (e.g., no-result prompt).
+    // zh-CN: 暴露当前命中位置, 供 UI 逻辑使用 (例如无结果提示).
+    fun getFoundIndex(): Int = mFoundIndex
+
+    /**
+     * Reset search cursor for "Find Next" based on current caret/selection.
+     *
+     * Behavior:
+     * - Uses current selection start (min of start/end).
+     * - Sets mFoundIndex to (cursor - 1), so findNext() starts at cursor.
+     *
+     * zh-CN:
+     * 将 "查找下一个" 的起点对齐到当前光标/选择起点.
+     * - 使用 selectionStart/End 的较小值作为光标位置
+     * - mFoundIndex 设为 cursor-1, 使 findNext() 从 cursor 开始找
+     */
+    fun resetFoundIndexForFindNextFromCursor() {
+        val textLen = codeEditText.text?.length ?: 0
+
+        // Use selection END as the starting anchor for "next",
+        // so when current match is selected we won't re-select it again.
+        //
+        // zh-CN: "下一个" 以 selectionEnd 作为起点锚点,
+        // 这样当当前命中被选中时不会再次选中同一条.
+        val cursor = maxOf(codeEditText.selectionStart, codeEditText.selectionEnd).coerceIn(0, textLen)
+
+        // Make findNext() start from `cursor`.
+        // zh-CN: 让 findNext() 从 cursor 开始找.
+        mFoundIndex = (cursor - 1).coerceAtLeast(-1)
+    }
+
+    /**
+     * Reset search cursor for "Find Prev" based on current caret/selection.
+     *
+     * Behavior:
+     * - Uses current selection start (min of start/end).
+     * - Sets mFoundIndex to cursor, so findPrev() searches before cursor.
+     *
+     * zh-CN:
+     * 将 "查找上一个" 的起点对齐到当前光标/选择起点.
+     * - 使用 selectionStart/End 的较小值作为光标位置
+     * - mFoundIndex 设为 cursor, 使 findPrev() 从 cursor 往前找
+     */
+    fun resetFoundIndexForFindPrevFromCursor() {
+        val textLen = codeEditText.text?.length ?: 0
+        val cursor = minOf(codeEditText.selectionStart, codeEditText.selectionEnd).coerceIn(0, textLen)
+        mFoundIndex = cursor
+    }
 
     @Throws(CheckedPatternSyntaxException::class)
     fun find(keywords: String, usingRegex: Boolean) {
@@ -531,13 +777,19 @@ class CodeEditor : HVScrollView {
         fun onCursorChange(line: String, cursor: Int)
     }
 
-    inner class CommentHelper : CodeEditorCommentHelper {
+    inner class CommentHelper {
 
         private val prefix = "//"
 
-        override fun handle() = toggle()
+        fun toggle() {
+            if (isCommented()) {
+                uncomment()
+            } else {
+                comment()
+            }
+        }
 
-        override fun comment() {
+        fun comment() {
             var selectionEnd = codeEditText.selectionEnd
             val insetPosition = getProperWhitespaceAmount()
             var hasEverMatched = false
@@ -568,7 +820,7 @@ class CodeEditor : HVScrollView {
             codeEditText.setSelection(selectionEnd)
         }
 
-        override fun uncomment() {
+        fun uncomment() {
             var selectionEnd = codeEditText.selectionEnd
 
             replaceSelectedLines(Regex("(\\s*)($prefix\\s?)(.*)")) { matchResult ->
@@ -580,7 +832,7 @@ class CodeEditor : HVScrollView {
             codeEditText.setSelection(selectionEnd)
         }
 
-        override fun isCommented(): Boolean {
+        fun isCommented(): Boolean {
             var atLeastOneWithPrefix = false
             val allMatched = getCoveredLinesText().split("\n").all {
                 it.matches(Regex("\\s*")) || it

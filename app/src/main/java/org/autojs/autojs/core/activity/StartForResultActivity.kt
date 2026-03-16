@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import org.autojs.autojs.tool.IntentExtras
+import org.autojs.autojs.util.IntentUtils.startSafely
 
 /**
  * Created by SuperMonster003 on Dec 14, 2023.
@@ -40,15 +41,17 @@ class StartForResultActivity : Activity() {
             }
         }
         if (extras == null) {
-            finish().also { return }
+            finish()
+            return
         }
-        val callback = extras!!.map["callback"]
+        val callback = extras.map["callback"]
         if (callback is Callback) {
             mCallback = callback
         }
         if (callback == null) {
             mCallback = null
-            finish().also { return }
+            finish()
+            return
         }
         mCallback!!.onActivityCreate(this)
     }
@@ -62,10 +65,8 @@ class StartForResultActivity : Activity() {
         @JvmStatic
         fun start(context: Context, callback: Callback?) {
             Intent(context, StartForResultActivity::class.java).also { intent ->
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 intent.putExtra(IntentExtras.EXTRA_ID, IntentExtras().apply { map["callback"] = callback }.id)
-                context.startActivity(intent)
-            }
+            }.startSafely(context)
         }
 
     }

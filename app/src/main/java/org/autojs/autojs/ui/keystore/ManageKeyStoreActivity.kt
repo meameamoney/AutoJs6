@@ -7,7 +7,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.annotation.StringRes
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -22,7 +21,9 @@ import org.autojs.autojs.core.pref.Pref
 import org.autojs.autojs.ui.BaseActivity
 import org.autojs.autojs.ui.keystore.NewKeyStoreDialog.NewKeyStoreConfigs
 import org.autojs.autojs.ui.viewmodel.KeyStoreViewModel
-import org.autojs.autojs.util.ViewUtils
+import org.autojs.autojs.util.IntentUtils.startSafely
+import org.autojs.autojs.util.ViewUtils.excludeFloatingActionButtonFromBottomNavigationBar
+import org.autojs.autojs.util.ViewUtils.excludePaddingClippableViewFromBottomNavigationBar
 import org.autojs.autojs.util.ViewUtils.setMenuIconsColorByThemeColorLuminance
 import org.autojs.autojs6.R
 import org.autojs.autojs6.databinding.ActivityManageKeyStoreBinding
@@ -38,9 +39,7 @@ class ManageKeyStoreActivity : BaseActivity() {
 
     companion object {
         fun startActivity(context: Context) {
-            Intent(context, ManageKeyStoreActivity::class.java).apply {}.also {
-                ContextCompat.startActivity(context, it, null)
-            }
+            Intent(context, ManageKeyStoreActivity::class.java).startSafely(context)
         }
     }
 
@@ -91,7 +90,7 @@ class ManageKeyStoreActivity : BaseActivity() {
             setOnClickListener {
                 NewKeyStoreDialog(newKeyStoreDialogCallback).show(supportFragmentManager, null)
             }
-            ViewUtils.excludeFloatingActionButtonFromBottomNavigationBar(this)
+            excludeFloatingActionButtonFromBottomNavigationBar()
         }
 
         keyStoreAdapter = KeyStoreAdaptor(keyStoreAdapterCallback)
@@ -99,7 +98,7 @@ class ManageKeyStoreActivity : BaseActivity() {
             adapter = keyStoreAdapter
             layoutManager = LinearLayoutManager(this@ManageKeyStoreActivity)
             itemAnimator = DefaultItemAnimator()
-            ViewUtils.excludePaddingClippableViewFromBottomNavigationBar(this)
+            excludePaddingClippableViewFromBottomNavigationBar()
         }
         binding.swipeRefreshLayout.setOnRefreshListener {
             loadKeyStores()

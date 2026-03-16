@@ -4,10 +4,10 @@ import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
 import org.autojs.autojs.core.web.InjectableWebClient
 import org.autojs.autojs.core.web.InjectableWebView
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsUnwrapped
-import org.autojs.autojs.extension.FlexibleArray
-import org.autojs.autojs.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsUnwrapped
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
@@ -25,7 +25,7 @@ class Web(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
         ::newWebSocket.name to AS_GLOBAL,
     )
 
-    companion object : FlexibleArray() {
+    companion object : ArgumentGuards() {
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
@@ -35,7 +35,7 @@ class Web(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
 
         @JvmStatic
         @RhinoFunctionBody
-        fun newInjectableWebViewRhinoWithRuntime(scriptRuntime: ScriptRuntime, vararg args: Any?): InjectableWebView = withRhinoContext { cx ->
+        fun newInjectableWebViewRhinoWithRuntime(scriptRuntime: ScriptRuntime, vararg args: Any?): InjectableWebView = withRhinoContext(scriptRuntime) { cx ->
             when (args.size) {
                 2 -> {
                     val (androidContext, url) = args
@@ -60,7 +60,7 @@ class Web(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun newInjectableWebClient(scriptRuntime: ScriptRuntime, args: Array<out Any?>): InjectableWebClient = ensureArgumentsIsEmpty(args) {
-            withRhinoContext { cx -> InjectableWebClient(cx, scriptRuntime.topLevelScope) }
+            withRhinoContext(scriptRuntime) { cx -> InjectableWebClient(cx, scriptRuntime.topLevelScope) }
         }
 
         @JvmStatic

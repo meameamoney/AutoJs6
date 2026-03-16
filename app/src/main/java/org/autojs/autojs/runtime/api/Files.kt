@@ -192,8 +192,13 @@ class Files(private val scriptRuntime: ScriptRuntime) {
         return PFiles.isEmptyDir(path(path))
     }
 
-    fun getHumanReadableSize(bytes: Long): String {
-        return PFiles.getHumanReadableSize(bytes)
+    @JvmOverloads
+    fun getHumanReadableSize(bytes: Long, useIecIdentifier: Boolean = false): String {
+        return PFiles.getHumanReadableSize(bytes, useIecIdentifier)
+    }
+
+    fun formatSizeWithUnit(bytes: Long): String {
+        return PFiles.formatSizeWithUnit(bytes)
     }
 
     fun getSimplifiedPath(path: String?): String {
@@ -222,6 +227,7 @@ class Files(private val scriptRuntime: ScriptRuntime) {
     }
 
     companion object {
+        @JvmStatic
         fun join(parent: String?, vararg child: String?): String {
             return PFiles.join(parent, *child)
         }

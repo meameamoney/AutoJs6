@@ -27,6 +27,8 @@ import org.autojs.autojs.ui.settings.AboutActivity
 import org.autojs.autojs.ui.settings.PreferencesActivity
 import org.autojs.autojs.util.App
 import org.autojs.autojs.util.IntentUtils
+import org.autojs.autojs.util.IntentUtils.start
+import org.autojs.autojs.util.IntentUtils.startSafely
 import org.autojs.autojs6.R
 import java.lang.ref.WeakReference
 import java.net.URI
@@ -59,12 +61,13 @@ class AppUtils(context: Context, @get:ScriptInterface val fileProviderAuthority:
      * @param o < alias | packageName >
      */
     @ScriptInterface
-    fun launchPackage(o: String?) = runCatching {
-        o ?: return false
-        val nicePackageName = getAppByAlias(alias = o)?.packageName ?: (/* packageName = */ o)
-        val intent = mPackageManager.getLaunchIntentForPackage(nicePackageName) ?: return false
-        mContext.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    }.isSuccess
+    fun launchPackage(o: String?): Boolean =
+        runCatching {
+            o ?: return false
+            val nicePackageName = getAppByAlias(alias = o)?.packageName ?: (/* packageName = */ o)
+            val intent = mPackageManager.getLaunchIntentForPackage(nicePackageName) ?: return false
+            intent.start(mContext)
+        }.isSuccess
 
     @ScriptInterface
     @Suppress("unused")
@@ -99,12 +102,8 @@ class AppUtils(context: Context, @get:ScriptInterface val fileProviderAuthority:
         else -> packageManager.getApplicationInfo(packageName, flags)
     }
 
-    // @ScriptInterface
-    // @Deprecated("Use openAppSettings instead.", ReplaceWith("this.launchSettings(packageName)"))
-    // fun openAppSetting(packageName: String): Boolean = launchSettings(packageName)
-
     @ScriptInterface
-    fun launchSettings(packageName: String): Boolean = IntentUtils.goToAppDetailSettings(mContext, packageName)
+    fun launchSettings(packageName: String): Boolean = IntentUtils.launchAppDetailsSettings(mContext, packageName)
 
     val currentActivity: Activity?
         get() {
@@ -159,8 +158,7 @@ class AppUtils(context: Context, @get:ScriptInterface val fileProviderAuthority:
     @ScriptInterface
     fun uninstall(packageName: String) {
         Intent(Intent.ACTION_DELETE, "package:$packageName".toUri())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            .let { mContext.startActivity(it) }
+            .startSafely(mContext)
     }
 
     @ScriptInterface

@@ -3,13 +3,13 @@ package org.autojs.autojs.runtime.api.augment.colors
 import android.graphics.Color.BLACK
 import org.autojs.autojs.annotation.RhinoFunctionObjectBody
 import org.autojs.autojs.annotation.RhinoStandardFunctionInterface
-import org.autojs.autojs.extension.ArrayExtensions.unshiftWith
-import org.autojs.autojs.extension.FlexibleArray.Companion.ensureArgumentsIsEmpty
-import org.autojs.autojs.extension.FlexibleArray.Companion.ensureArgumentsOnlyOne
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.ensureArgumentsIsEmpty
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.ensureArgumentsOnlyOne
 import org.autojs.autojs.runtime.api.StringReadable
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.api.augment.colors.Colors.parseRelativePercentage
 import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
+import org.autojs.autojs.util.ArrayUtils.unshiftWith
 import org.autojs.autojs.util.RhinoUtils
 import org.autojs.autojs.util.RhinoUtils.NOT_CONSTRUCTABLE
 import org.autojs.autojs.util.RhinoUtils.newBaseFunction
@@ -55,7 +55,7 @@ class ColorNativeObject @JvmOverloads constructor(color: Any? = BLACK) : NativeO
         return when (name) {
             "equals", StringReadable.KEY -> true
             in mProxySetterNames -> true
-            in mProxyTowardsNames.map { "to${uppercaseFirstChar(it)}" } -> true
+            in mProxyTowardsNames.map { "to${it.uppercaseFirstChar()}" } -> true
             else -> super.has(name, start)
         }
     }
@@ -80,7 +80,7 @@ class ColorNativeObject @JvmOverloads constructor(color: Any? = BLACK) : NativeO
         }
         else -> {
             val protoName = when (name) {
-                in mProxyTowardsNames -> "to${uppercaseFirstChar(name)}"
+                in mProxyTowardsNames -> "to${name.uppercaseFirstChar()}"
                 else -> name
             }
             try {
@@ -93,7 +93,9 @@ class ColorNativeObject @JvmOverloads constructor(color: Any? = BLACK) : NativeO
     }
 
     @RhinoFunctionObjectBody
-    override fun equals(other: Any?) = Colors.isEqualRhino(color, other)
+    override fun equals(other: Any?) = runCatching {
+        Colors.isEqualRhino(color, other)
+    }.getOrDefault(false)
 
     @RhinoFunctionObjectBody
     override fun toStringReadable(): String = Colors.summaryRhino(color)

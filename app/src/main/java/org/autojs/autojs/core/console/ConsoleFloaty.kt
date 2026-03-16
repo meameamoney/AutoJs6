@@ -12,15 +12,14 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.core.content.res.ResourcesCompat
-import androidx.core.graphics.alpha
-import androidx.core.graphics.blue
-import androidx.core.graphics.green
-import androidx.core.graphics.red
+import androidx.core.view.ViewCompat
+import androidx.core.view.isVisible
 import org.autojs.autojs.runtime.api.ScreenMetrics
 import org.autojs.autojs.ui.enhancedfloaty.FloatyService
 import org.autojs.autojs.ui.enhancedfloaty.ResizableExpandableFloaty.AbstractResizableExpandableFloaty
 import org.autojs.autojs.ui.enhancedfloaty.ResizableExpandableFloatyWindow
-import org.autojs.autojs.util.DrawableUtils
+import org.autojs.autojs.util.ColorUtils
+import org.autojs.autojs.util.ViewUtils
 import org.autojs.autojs.util.ViewUtils.setViewMeasure
 import org.autojs.autojs6.R
 import org.autojs.autojs6.databinding.FloatingConsoleExpandBinding
@@ -114,7 +113,12 @@ class ConsoleFloaty(private val console: ConsoleImpl) : AbstractResizableExpanda
             text = mTitleText
         }
         titleBarView = expandedBinding.titleBar.apply {
-            setTitleViewBackgroundColor(this, console.configurator.titleBackgroundColor)
+            applyTitleBackground(
+                this,
+                console.getTitleBackgroundColor(),
+                console.getTitleBackgroundTint(),
+                console.getTitleBackgroundAlpha(),
+            )
         }
         expandedBinding.close.let {
             it.setOnClickListener { console.hide() }
@@ -124,7 +128,7 @@ class ConsoleFloaty(private val console: ConsoleImpl) : AbstractResizableExpanda
         expandedBinding.moveOrResize.let {
             it.setOnClickListener {
                 mMoveCursor?.run {
-                    if (visibility == View.VISIBLE) {
+                    if (isVisible) {
                         visibility = View.GONE
                         mResizer?.visibility = View.GONE
                     } else {
@@ -143,10 +147,25 @@ class ConsoleFloaty(private val console: ConsoleImpl) : AbstractResizableExpanda
         }
     }
 
+    /**
+     * Apply color/tint/alpha to title bar background at once
+     * to prevent transition flash on first frame.
+     *
+     * zh-CN: 将 color/tint/alpha 一次性应用到标题栏背景, 防止首帧过渡闪现.
+     */
+    private fun applyTitleBackground(view: LinearLayout, @ColorInt color: Int, @ColorInt tint: Int?, alpha: Double) {
+        val bg = view.background?.mutate()
+
+        ViewUtils.setBackgroundColor(view, color, false)
+        ViewCompat.setBackgroundTintList(view, tint?.let { ColorStateList.valueOf(it) })
+        bg?.alpha = ColorUtils.toUint8(alpha, true)
+
+        view.background = bg
+    }
+
     private fun setUpConsole(window: ResizableExpandableFloatyWindow) {
         expandedBinding.console.apply {
             setConsole(console)
-            setWindow(window)
         }
         initConsoleTitleBar(window)
     }
@@ -166,24 +185,23 @@ class ConsoleFloaty(private val console: ConsoleImpl) : AbstractResizableExpanda
 
     fun getTitle(): String = mTitleText?.toString() ?: ""
 
-    fun setTitleBackgroundColor(@ColorInt color: Int) {
-        console.configurator.titleBackgroundColor = color
-        titleBarView?.apply { post { setTitleViewBackgroundColor(this, color) } }
+    fun setTitleBackgroundColor(@ColorInt color: Int) = withTitleBarView {
+        ViewUtils.setBackgroundColor(it, color)
     }
 
-    fun setTitleBackgroundTint(tint: Int) {
-        setTitleBackgroundColor(Color.argb(console.configurator.titleBackgroundColor.alpha, tint.red, tint.green, tint.blue))
+    fun setTitleBackgroundTint(@ColorInt tint: Int?) = withTitleBarView {
+        it.background?.mutate()?.clearColorFilter()
+        ViewCompat.setBackgroundTintList(it, tint?.let { ColorStateList.valueOf(tint) })
     }
 
-    fun setTitleBackgroundAlpha(alpha: Int) {
-        val bg = console.configurator.titleBackgroundColor
-        setTitleBackgroundColor(Color.argb(parseAlpha(alpha), bg.red, bg.green, bg.blue))
+    fun setTitleBackgroundAlpha(alpha: Float?) = withTitleBarView {
+        it.background?.mutate()?.alpha = ColorUtils.toUint8(alpha?.toDouble() ?: 1.0, true)
     }
 
-    fun setTitleIconsTint(color: Int) {
+    fun setTitleIconsTint(color: Int?) {
         mtTitleIconsTint = color
-        arrayOf(mMinimizeButton, mControllingButton, mCloseButton).filterNotNull().forEach {
-            it.imageTintList = ColorStateList.valueOf(color)
+        arrayOf(mMinimizeButton, mControllingButton, mCloseButton).filterNotNull().forEach { view ->
+            view.imageTintList = color?.let { ColorStateList.valueOf(it) }
         }
     }
 
@@ -201,18 +219,18 @@ class ConsoleFloaty(private val console: ConsoleImpl) : AbstractResizableExpanda
 
     fun getTitleTextColor() = mTitleView?.textColors?.defaultColor ?: Color.BLACK
 
-    private fun setTitleViewBackgroundColor(view: LinearLayout, color: Int) {
-        view.background = DrawableUtils.setDrawableColorFilterSrc(view.background, color)
-    }
-
-    private fun parseAlpha(alpha: Int) = when {
-        alpha < 0 -> console.configurator.titleBackgroundColor.alpha
-        else -> alpha
+    private fun withTitleBarView(block: (LinearLayout) -> Unit) {
+        titleBarView?.let { it.post { block(it) } }
     }
 
     internal fun setCloseButton(resId: Int) {
-        mCloseButton?.apply {
-            post { setImageDrawable(ResourcesCompat.getDrawable(console.uiHandler.applicationContext.resources, resId, null)) }
+        mCloseButton?.let {
+            val res = console.uiHandler.applicationContext.resources
+            val padding = (7 * res.displayMetrics.density).roundToInt()
+            it.post {
+                it.setImageDrawable(ResourcesCompat.getDrawable(res, resId, null))
+                it.setPadding(padding, padding, padding, padding)
+            }
         }
     }
 

@@ -6,7 +6,7 @@ import android.view.Window;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import com.afollestad.materialdialogs.MaterialDialog;
-import org.autojs.autojs.app.DialogUtils;
+import org.autojs.autojs.util.DialogUtils;
 import org.autojs.autojs.model.script.ScriptFile;
 import org.autojs.autojs.model.script.Scripts;
 import org.autojs.autojs.util.ViewUtils;
@@ -66,7 +66,7 @@ public class ScriptLoopDialog {
     }
 
     public void show() {
-        DialogUtils.showDialog(mDialog);
+        DialogUtils.showAdaptive(mDialog);
     }
 
 }

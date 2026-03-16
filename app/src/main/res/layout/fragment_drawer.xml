@@ -13,21 +13,23 @@
     android:importantForAccessibility="no"
     android:orientation="vertical">
 
-    <androidx.recyclerview.widget.RecyclerView
+    <androidx.recyclerview.widget.ThemeColorRecyclerView
         android:id="@+id/drawer_menu"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1"
+        android:paddingBottom="4dp" />
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="?android:divider" />
+        android:layout_height="@dimen/divider_drawer_menu_group"
+        android:background="@color/drawer_menu_group_divider_color" />
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="41dp"
+        android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
+        android:paddingVertical="2dp"
         android:baselineAligned="false">
 
         <LinearLayout
@@ -36,27 +38,58 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="?selectableItemBackground"
-            android:gravity="center"
-            android:orientation="horizontal">
+            android:gravity="center|bottom"
+            android:orientation="vertical">
 
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="17dp"
+                android:layout_height="17dp"
                 android:layout_gravity="center"
-                android:layout_marginEnd="10dp"
-                android:src="@drawable/ic_ali_settings"
+                android:layout_marginBottom="2dp"
+                android:src="@drawable/ic_settings"
+                android:translationY="-0.4dp"
                 app:tint="?android:textColorPrimary"
                 tools:ignore="ContentDescription" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_marginEnd="4dp"
+                android:layout_gravity="center"
                 android:gravity="center"
                 android:text="@string/text_settings"
                 android:textColor="?android:textColorPrimary"
-                android:textSize="15sp" />
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/plugin_center"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="?selectableItemBackground"
+            android:gravity="center|bottom"
+            android:orientation="vertical">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:layout_gravity="center"
+                android:layout_marginBottom="2dp"
+                android:src="@drawable/ic_jigsaw"
+                android:translationY="-0.6dp"
+                app:tint="?android:textColorPrimary"
+                tools:ignore="ContentDescription" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:text="@string/text_plugins"
+                android:textColor="?android:textColorPrimary"
+                android:textSize="12sp" />
+
         </LinearLayout>
 
         <LinearLayout
@@ -65,27 +98,27 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="?selectableItemBackground"
-            android:gravity="center"
-            android:orientation="horizontal">
+            android:gravity="center|bottom"
+            android:orientation="vertical">
 
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:layout_gravity="center"
-                android:layout_marginEnd="10dp"
+                android:layout_marginBottom="2dp"
                 android:src="@drawable/ic_refresh_white_24dp"
+                android:translationY="1dp"
                 app:tint="?android:textColorPrimary"
                 tools:ignore="ContentDescription" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_marginEnd="4dp"
+                android:layout_gravity="center"
                 android:gravity="center"
-                android:text="@string/text_restart_app"
+                android:text="@string/text_restart"
                 android:textColor="?android:textColorPrimary"
-                android:textSize="15sp" />
+                android:textSize="12sp" />
 
         </LinearLayout>
 
@@ -95,27 +128,28 @@
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:background="?selectableItemBackground"
-            android:gravity="center"
-            android:orientation="horizontal">
+            android:gravity="center|bottom"
+            android:orientation="vertical">
 
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
                 android:layout_gravity="center"
-                android:layout_marginEnd="10dp"
-                android:src="@drawable/ic_ali_exit"
+                android:layout_marginBottom="2dp"
+                android:translationY="0.8dp"
+                android:src="@drawable/ic_power_switch"
                 app:tint="?android:textColorPrimary"
                 tools:ignore="ContentDescription" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:layout_marginEnd="4dp"
-                android:textColor="?android:textColorPrimary"
+                android:layout_gravity="center"
                 android:gravity="center"
                 android:text="@string/text_exit"
-                android:textSize="15sp" />
+                android:textColor="?android:textColorPrimary"
+                android:textSize="12sp" />
+
         </LinearLayout>
 
     </LinearLayout>

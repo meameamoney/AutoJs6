@@ -32,16 +32,19 @@ import org.autojs.autojs.timing.TimedTaskManager;
 import org.autojs.autojs.ui.timing.TimedTaskSettingActivity;
 import org.autojs.autojs.util.ColorUtils;
 import org.autojs.autojs.util.FileUtils;
+import org.autojs.autojs.util.IntentUtils;
 import org.autojs.autojs6.R;
 import org.autojs.autojs6.databinding.ExplorerFirstCharIconBinding;
 import org.autojs.autojs6.databinding.TaskListRecyclerViewItemBinding;
 
 import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
 import java.util.List;
 
 /**
  * Created by Stardust on Mar 24, 2017.
- * Modified by SuperMonster003 as of May 26, 2022.
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Jan 27, 2026.
+ * Modified by SuperMonster003 as of Jan 27, 2026.
  */
 public class TaskListRecyclerView extends ThemeColorRecyclerView {
 
@@ -57,10 +60,33 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
         @Override
         public void onStart(final ScriptExecution execution) {
             try {
-                int i = mRunningTaskGroup.addTask(execution);
-                if (i != -1) {
-                    post(() -> mAdapter.notifyChildInserted(0, i));
-                }
+                final Adapter adapter = mAdapter;
+                post(() -> {
+                    // Constrain list mutation to main thread to avoid ConcurrentModificationException in adapter iteration.
+                    // zh-CN: 将列表修改约束在主线程执行, 避免适配器迭代时触发 ConcurrentModificationException.
+
+                    if (adapter != mAdapter) {
+                        return;
+                    }
+
+                    int insertedPos = mRunningTaskGroup.addTask(execution);
+                    if (insertedPos == -1) {
+                        return;
+                    }
+
+                    // Recompute childPosition at execution time to avoid stale index caused by frequent mutations.
+                    // zh-CN: 在执行通知时重新计算 childPosition, 避免频繁变动导致的索引过期.
+                    int childPosition = mRunningTaskGroup.indexOf(execution);
+                    if (childPosition < 0) {
+                        // Task disappeared before UI update; fallback to refresh to recover consistency.
+                        // zh-CN: UI 更新前任务已消失; 回退到 refresh 以恢复一致性.
+                        refresh();
+                        return;
+                    }
+
+                    notifyChildInsertedSafe(adapter, 0, childPosition);
+                    notifyParentChangedSafe(adapter, 0);
+                });
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -77,10 +103,15 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
         }
 
         private void onFinish(ScriptExecution execution) {
+            final Adapter adapter = mAdapter;
             post(() -> {
+                if (adapter != mAdapter) {
+                    return;
+                }
                 final int i = mRunningTaskGroup.removeTask(execution);
                 if (i >= 0) {
-                    mAdapter.notifyChildRemoved(0, i);
+                    notifyChildRemovedSafe(adapter, 0, i);
+                    notifyParentChangedSafe(adapter, 0);
                 } else {
                     refresh();
                 }
@@ -164,13 +195,16 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
         mIntentTaskChangeDisposable.dispose();
     }
 
-    void onTaskChange(ModelChange<?> taskChange) {
+    private void onTaskChange(ModelChange<?> taskChange) {
+        final Adapter adapter = mAdapter;
         if (taskChange.getAction() == ModelChange.INSERT) {
-            mAdapter.notifyChildInserted(1, mPendingTaskGroup.addTask(taskChange.getData()));
+            notifyChildInsertedSafe(adapter, 1, mPendingTaskGroup.addTask(taskChange.getData()));
+            notifyParentChangedSafe(adapter, 1);
         } else if (taskChange.getAction() == ModelChange.DELETE) {
             final int i = mPendingTaskGroup.removeTask(taskChange.getData());
             if (i >= 0) {
-                mAdapter.notifyChildRemoved(1, i);
+                notifyChildRemovedSafe(adapter, 1, i);
+                notifyParentChangedSafe(adapter, 1);
             } else {
                 Log.w(LOG_TAG, "data inconsistent on change: " + taskChange);
                 refresh();
@@ -178,10 +212,166 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
         } else if (taskChange.getAction() == ModelChange.UPDATE) {
             final int i = mPendingTaskGroup.updateTask(taskChange.getData());
             if (i >= 0) {
-                mAdapter.notifyChildChanged(1, i);
+                notifyChildChangedSafe(adapter, 1, i);
             } else {
                 refresh();
             }
+        }
+    }
+
+    private void notifyParentChangedSafe(@NonNull Adapter adapter, int parentPosition) {
+        // Avoid notifying an adapter that has been replaced asynchronously.
+        // zh-CN: 避免对已经被异步替换的适配器发送通知.
+        if (adapter != mAdapter) {
+            return;
+        }
+
+        // Avoid out-of-range parentPosition caused by transient state mismatch.
+        // zh-CN: 避免由于瞬时状态不一致导致的 parentPosition 越界.
+        if (parentPosition < 0 || parentPosition >= mTaskGroups.size()) {
+            return;
+        }
+
+        // RecyclerView may be computing layout/dispatching updates; postpone to next loop.
+        // zh-CN: RecyclerView 可能正在计算布局/分发更新, 将通知延迟到下一次消息循环.
+        if (isComputingLayout()) {
+            post(() -> notifyParentChangedSafe(adapter, parentPosition));
+            return;
+        }
+
+        try {
+            adapter.notifyParentChanged(parentPosition);
+        } catch (IndexOutOfBoundsException e) {
+            /* Ignored. */
+        }
+    }
+
+    private void notifyChildInsertedSafe(@NonNull Adapter adapter, int parentPosition, int childPosition) {
+        // Avoid notifying an adapter that has been replaced asynchronously.
+        // zh-CN: 避免对已经被异步替换的适配器发送通知.
+        if (adapter != mAdapter) {
+            return;
+        }
+
+        // Avoid out-of-range parentPosition caused by transient state mismatch.
+        // zh-CN: 避免由于瞬时状态不一致导致的 parentPosition 越界.
+        if (parentPosition < 0 || parentPosition >= mTaskGroups.size()) {
+            return;
+        }
+
+        // Avoid negative childPosition caused by transient state mismatch.
+        // zh-CN: 避免由于瞬时状态不一致导致的 childPosition 为负数.
+        if (childPosition < 0) {
+            return;
+        }
+
+        // RecyclerView may be computing layout/dispatching updates; postpone to next loop.
+        // zh-CN: RecyclerView 可能正在计算布局/分发更新, 将通知延迟到下一次消息循环.
+        if (isComputingLayout()) {
+            post(() -> notifyChildInsertedSafe(adapter, parentPosition, childPosition));
+            return;
+        }
+
+        try {
+            adapter.notifyChildInserted(parentPosition, childPosition);
+        } catch (IndexOutOfBoundsException e) {
+            // Self-heal on transient inconsistency to avoid crashes during frequent list mutations.
+            // zh-CN: 在频繁列表变动导致的瞬时不一致场景下自愈, 避免崩溃.
+            Log.w(LOG_TAG, "notifyChildInsertedSafe: inconsistent state, fallback to refresh(). parentPosition="
+                           + parentPosition + ", childPosition=" + childPosition, e);
+            refresh();
+        } catch (ConcurrentModificationException e) {
+            // Self-heal when child list is modified during adapter iteration.
+            // zh-CN: 当适配器迭代 child 列表期间发生修改时自愈.
+            Log.w(LOG_TAG, "notifyChildInsertedSafe: CME, fallback to refresh(). parentPosition="
+                           + parentPosition + ", childPosition=" + childPosition, e);
+            refresh();
+        }
+    }
+
+    private void notifyChildRemovedSafe(@NonNull Adapter adapter, int parentPosition, int childPosition) {
+        // Avoid notifying an adapter that has been replaced asynchronously.
+        // zh-CN: 避免对已经被异步替换的适配器发送通知.
+        if (adapter != mAdapter) {
+            return;
+        }
+
+        // Avoid out-of-range parentPosition caused by transient state mismatch.
+        // zh-CN: 避免由于瞬时状态不一致导致的 parentPosition 越界.
+        if (parentPosition < 0 || parentPosition >= mTaskGroups.size()) {
+            return;
+        }
+
+        // Avoid negative childPosition caused by transient state mismatch.
+        // zh-CN: 避免由于瞬时状态不一致导致的 childPosition 为负数.
+        if (childPosition < 0) {
+            return;
+        }
+
+        // RecyclerView may be computing layout/dispatching updates; postpone to next loop.
+        // zh-CN: RecyclerView 可能正在计算布局/分发更新, 将通知延迟到下一次消息循环.
+        if (isComputingLayout()) {
+            post(() -> notifyChildRemovedSafe(adapter, parentPosition, childPosition));
+            return;
+        }
+
+        try {
+            adapter.notifyChildRemoved(parentPosition, childPosition);
+        } catch (IndexOutOfBoundsException e) {
+            // Self-heal on transient inconsistency to avoid crashes during frequent list mutations.
+            // zh-CN: 在频繁列表变动导致的瞬时不一致场景下自愈, 避免崩溃.
+            Log.w(LOG_TAG, "notifyChildRemovedSafe: inconsistent state, fallback to refresh(). parentPosition="
+                           + parentPosition + ", childPosition=" + childPosition, e);
+            refresh();
+        } catch (ConcurrentModificationException e) {
+            // Self-heal when child list is modified during adapter iteration.
+            // zh-CN: 当适配器迭代 child 列表期间发生修改时自愈.
+            Log.w(LOG_TAG, "notifyChildRemovedSafe: CME, fallback to refresh(). parentPosition="
+                           + parentPosition + ", childPosition=" + childPosition, e);
+            refresh();
+        }
+    }
+
+    private void notifyChildChangedSafe(@NonNull Adapter adapter, int parentPosition, int childPosition) {
+        // Avoid notifying an adapter that has been replaced asynchronously.
+        // zh-CN: 避免对已经被异步替换的适配器发送通知.
+        if (adapter != mAdapter) {
+            return;
+        }
+
+        // Avoid out-of-range parentPosition caused by transient state mismatch.
+        // zh-CN: 避免由于瞬时状态不一致导致的 parentPosition 越界.
+        if (parentPosition < 0 || parentPosition >= mTaskGroups.size()) {
+            return;
+        }
+
+        // Avoid negative childPosition caused by transient state mismatch.
+        // zh-CN: 避免由于瞬时状态不一致导致的 childPosition 为负数.
+        if (childPosition < 0) {
+            return;
+        }
+
+        // RecyclerView may be computing layout/dispatching updates; postpone to next loop.
+        // zh-CN: RecyclerView 可能正在计算布局/分发更新, 将通知延迟到下一次消息循环.
+        if (isComputingLayout()) {
+            post(() -> notifyChildChangedSafe(adapter, parentPosition, childPosition));
+            return;
+        }
+
+        try {
+            adapter.notifyChildChanged(parentPosition, childPosition);
+        } catch (IndexOutOfBoundsException e) {
+            // Self-heal on transient inconsistency to avoid crashes during frequent list mutations.
+            // zh-CN: 在频繁列表变动导致的瞬时不一致场景下自愈, 避免崩溃.
+            Log.w(LOG_TAG, "notifyChildChangedSafe: inconsistent state, fallback to refresh(). parentPosition="
+                           + parentPosition + ", childPosition=" + childPosition, e);
+            refresh();
+        } catch (ConcurrentModificationException e) {
+            // Self-heal when child list is modified during adapter iteration.
+            // zh-CN: 当适配器迭代 child 列表期间发生修改时自愈.
+            Log.w(LOG_TAG, "notifyChildChangedSafe: CME, fallback to refresh(). parentPosition="
+                           + parentPosition + ", childPosition=" + childPosition, e);
+            refresh();
         }
     }
 
@@ -216,13 +406,14 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
         }
     }
 
-    class TaskViewHolder extends ChildViewHolder<Task> {
+    private class TaskViewHolder extends ChildViewHolder<Task> {
 
         @NonNull
         private final ExplorerFirstCharIconBinding firstCharIconBinding;
 
         @NonNull
         private final TaskListRecyclerViewItemBinding itemBinding;
+        private final int mItemIconThemeColorForContrast;
 
         private Task mTask;
 
@@ -231,11 +422,13 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
             itemView.setOnClickListener(this::onItemClick);
             itemBinding = TaskListRecyclerViewItemBinding.bind(itemView);
             firstCharIconBinding = ExplorerFirstCharIconBinding.bind(itemView);
+            mItemIconThemeColorForContrast = ColorUtils.adjustColorForContrast(
+                    getContext().getColor(R.color.window_background),
+                    ThemeColorManagerCompat.getColorPrimary(), 2.3);
         }
 
         public void bind(Task task) {
             mTask = task;
-            int itemIconThemeColorForContrast = ColorUtils.adjustColorForContrast(getContext().getColor(R.color.window_background), ThemeColorManagerCompat.getColorPrimary(), 2.3);
             FileUtils.TYPE.Icon icon;
             if (JavaScriptFileSource.ENGINE.equals(mTask.getEngineName())) {
                 icon = FileUtils.TYPE.JAVASCRIPT.icon;
@@ -246,8 +439,8 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
             }
             firstCharIconBinding.firstChar
                     .setIcon(icon)
-                    .setIconTextColor(itemIconThemeColorForContrast)
-                    .setStrokeColor(itemIconThemeColorForContrast)
+                    .setIconTextColor(mItemIconThemeColorForContrast)
+                    .setStrokeColor(mItemIconThemeColorForContrast)
                     .setFillTransparent();
             itemBinding.name.setText(task.getName());
             itemBinding.taskListFilePath.setText(task.getDesc());
@@ -265,7 +458,7 @@ public class TaskListRecyclerView extends ThemeColorRecyclerView {
                         : TimedTaskSettingActivity.EXTRA_TASK_ID;
                 Intent intent = new Intent(getContext(), TimedTaskSettingActivity.class)
                         .putExtra(extra, task.getId());
-                getContext().startActivity(intent);
+                IntentUtils.startSafely(intent, getContext());
             }
         }
     }

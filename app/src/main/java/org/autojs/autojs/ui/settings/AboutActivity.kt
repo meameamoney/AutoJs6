@@ -11,13 +11,14 @@ import com.afollestad.materialdialogs.MaterialDialog
 import com.jaredrummler.android.widget.AnimatedSvgView
 import de.psdev.licensesdialog.LicenseResolver
 import de.psdev.licensesdialog.LicensesDialog
-import org.autojs.autojs.extension.MaterialDialogExtensions.widgetThemeColor
+import org.autojs.autojs.util.DialogUtils.widgetThemeColor
 import org.autojs.autojs.network.UpdateChecker
 import org.autojs.autojs.network.UpdateChecker.PromptMode
 import org.autojs.autojs.ui.BaseActivity
 import org.autojs.autojs.ui.common.NotAskAgainDialog
 import org.autojs.autojs.util.ClipboardUtils
 import org.autojs.autojs.util.DeviceUtils
+import org.autojs.autojs.util.IntentUtils.startSafely
 import org.autojs.autojs.util.ViewUtils
 import org.autojs.autojs6.BuildConfig
 import org.autojs.autojs6.R
@@ -65,7 +66,7 @@ open class AboutActivity : BaseActivity() {
 
         functionsButtonsBinding.aboutFunctionsButtonLicenses.setOnClickListener { showLicensesDialog() }
         functionsButtonsBinding.aboutFunctionsButtonUpdate.setOnClickListener { checkForUpdates() }
-        functionsButtonsBinding.aboutFunctionsButtonVersionHistories.setOnClickListener { showVersionHistories() }
+        functionsButtonsBinding.aboutFunctionsButtonReleaseHistory.setOnClickListener { showReleaseHistory() }
         functionsButtonsBinding.aboutFunctionsButtonFeedback.setOnClickListener { startFeedbackActivity() }
     }
 
@@ -135,7 +136,7 @@ open class AboutActivity : BaseActivity() {
     }
 
     private fun launchDeveloperOptions() {
-        startActivity(Intent(this, DeveloperOptionsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        Intent(this, DeveloperOptionsActivity::class.java).startSafely(this)
     }
 
     private fun toastForFirstDeveloperIdentifier() {
@@ -163,11 +164,12 @@ open class AboutActivity : BaseActivity() {
     private fun checkForUpdates() {
         UpdateChecker.Builder(this)
             .setPromptMode(PromptMode.DIALOG)
+            .setGitHubMainBranch("master")
             .build().checkNow()
     }
 
-    private fun showVersionHistories() {
-        DisplayVersionHistoriesActivity.launch(this)
+    private fun showReleaseHistory() {
+        DisplayReleaseHistoryActivity.launch(this)
     }
 
     private fun startFeedbackActivity() {
@@ -188,16 +190,14 @@ open class AboutActivity : BaseActivity() {
     private fun launchGithubIssuesPage() {
         Intent(Intent.ACTION_VIEW)
             .setData(getString(R.string.url_github_autojs6_issues).toUri())
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            .let { startActivity(it) }
+            .startSafely(this)
     }
 
     companion object {
 
         fun startActivity(context: Context) {
             Intent(context, AboutActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .let { context.startActivity(it) }
+                .startSafely(context)
         }
 
     }

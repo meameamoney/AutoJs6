@@ -7,26 +7,26 @@ import android.os.Build
 import androidx.core.graphics.ColorUtils.HSLToColor
 import androidx.core.graphics.ColorUtils.RGBToHSL
 import androidx.core.graphics.ColorUtils.calculateLuminance
-import org.autojs.autojs.annotation.AugmentableSimpleGetterProxyInterface
 import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoSingletonFunctionInterface
 import org.autojs.autojs.core.image.ColorDetector
 import org.autojs.autojs.core.image.ColorTable
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsSpecies
-import org.autojs.autojs.extension.ArrayExtensions.jsArrayBrief
-import org.autojs.autojs.extension.ArrayExtensions.toNativeArray
-import org.autojs.autojs.extension.ArrayExtensions.toNativeObject
-import org.autojs.autojs.extension.FlexibleArray.Companion.component1
-import org.autojs.autojs.extension.FlexibleArray.Companion.component2
-import org.autojs.autojs.extension.ScriptableExtensions.prop
-import org.autojs.autojs.extension.ScriptableObjectExtensions.inquire
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component2
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsSpecies
+import org.autojs.autojs.rhino.extension.ArrayExtensions.jsArrayBrief
+import org.autojs.autojs.rhino.extension.IterableExtensions.toNativeArray
+import org.autojs.autojs.rhino.extension.MapExtensions.toNativeObject
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableObjectExtensions.inquire
 import org.autojs.autojs.runtime.api.augment.Augmentable
-import org.autojs.autojs.runtime.api.augment.SimpleGetterProxy
 import org.autojs.autojs.runtime.api.augment.jsox.Numberx
 import org.autojs.autojs.runtime.exception.ShouldNeverHappenException
 import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
 import org.autojs.autojs.theme.ThemeColor
+import org.autojs.autojs.theme.ThemeColorManager
 import org.autojs.autojs.util.ColorUtils
 import org.autojs.autojs.util.ColorUtils.roundToAlphaString
 import org.autojs.autojs.util.ColorUtils.roundToHueString
@@ -38,15 +38,14 @@ import org.autojs.autojs.util.RhinoUtils.newNativeObject
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
-import org.mozilla.javascript.Scriptable
-import org.mozilla.javascript.Scriptable.NOT_FOUND
+import org.mozilla.javascript.ScriptableObject.DONTENUM
 import java.util.function.Supplier
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import android.graphics.Color as AndroidColor
 
 @Suppress("unused", "UNUSED_PARAMETER")
-object Colors : Augmentable(), SimpleGetterProxy {
+object Colors : Augmentable() {
 
     @JvmField
     @Suppress("MayBeConstant")
@@ -56,7 +55,7 @@ object Colors : Augmentable(), SimpleGetterProxy {
     @Suppress("MayBeConstant")
     val DEFAULT_COLOR_ALGORITHM = "diff"
 
-    private val colorTables = arrayOf(
+    internal val colorTables = listOf(
         ColorTable.Android,
         ColorTable.Css,
         ColorTable.Web,
@@ -82,8 +81,10 @@ object Colors : Augmentable(), SimpleGetterProxy {
         colorMap
     }
 
+    private val allForNativeObject by lazy { all.toNativeObject() }
+
     override val selfAssignmentFunctions = listOf(
-        "toString",
+        "toString" to AS_FUNCTIONAL_TO_STRING,
         ::toInt.name,
         ::toHex.name,
         ::toFullHex.name,
@@ -149,30 +150,10 @@ object Colors : Augmentable(), SimpleGetterProxy {
         table::class.java.simpleName.lowercase() to table
     }
 
-    override val selfAssignmentGetters = listOf<Pair<String, Supplier<Any?>>>(
-        "all" to Supplier { all.toNativeObject() },
+    override val selfAssignmentGetters = listOf(
+        "all" to Supplier { allForNativeObject } to DONTENUM,
+        "themeColor" to Supplier { ThemeColorManager.currentThemeColor },
     )
-
-    @JvmStatic
-    @AugmentableSimpleGetterProxyInterface
-    fun get(scope: Scriptable, key: String): Any? {
-        for (table in colorTables) {
-            // @Alter by SuperMonster003 on Jun 15, 2024.
-            //  # for (member in table::class.members) {
-            //  #     if (member.name == name) {
-            //  #         return@ensureArgumentsOnlyOne member.call()
-            //  #     }
-            //  # }
-            try {
-                return table::class.java.getDeclaredField(key).apply {
-                    isAccessible = true
-                }.get(null) ?: NOT_FOUND
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        return NOT_FOUND
-    }
 
     @JvmStatic
     @RhinoSingletonFunctionInterface
@@ -1321,7 +1302,7 @@ object Colors : Augmentable(), SimpleGetterProxy {
     @JvmStatic
     @RhinoFunctionBody
     fun setPaintColorRhino(paint: Any?, color: Any?) {
-        require(paint is Paint) { "Argument paint for colors.setPaintColor must be a Paint instead of ${paint?.javaClass}" }
+        require(paint is Paint) { "Argument \"paint\" ${paint.jsBrief()} for colors.setPaintColor must be a Paint" }
         when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
                 val (a, r, g, b) = toArgbRhino(color).map { it.roundToInt() }

@@ -8,6 +8,7 @@ import android.util.Log;
 import org.autojs.autojs.AbstractAutoJs;
 import org.autojs.autojs.core.looper.LooperHelper;
 import org.autojs.autojs.runtime.ScriptRuntime;
+import org.autojs.autojs.runtime.exception.ScriptInterruptedException;
 import org.autojs.autojs.script.JavaScriptSource;
 import org.autojs.autojs.script.ScriptSource;
 import org.jetbrains.annotations.NotNull;
@@ -26,8 +27,8 @@ public class LoopBasedJavaScriptEngine extends RhinoJavaScriptEngine {
     private Handler mHandler;
     private boolean mLooping = false;
 
-    public LoopBasedJavaScriptEngine(ScriptRuntime scriptRuntime, Context context) {
-        super(scriptRuntime, context);
+    public LoopBasedJavaScriptEngine(Context context) {
+        super(context);
     }
 
     public interface ExecuteCallback {
@@ -74,8 +75,10 @@ public class LoopBasedJavaScriptEngine extends RhinoJavaScriptEngine {
                     continue;
                 } catch (Throwable t) {
                     mLooping = false;
-                    if (AbstractAutoJs.isInrt() && t.getMessage() != null) {
-                        ScriptRuntime.popException(t.getMessage());
+                    if (AbstractAutoJs.isInrt() && !ScriptInterruptedException.causedByInterrupt(t)) {
+                        if (t.getMessage() != null) {
+                            ScriptRuntime.popException(t.getMessage());
+                        }
                     }
                     throw t;
                 }

@@ -2,8 +2,11 @@ package org.autojs.autojs.ui.settings
 
 import android.os.Bundle
 import android.view.View
+import android.widget.EdgeEffect
 import androidx.preference.PreferenceFragmentCompat
-import org.autojs.autojs.util.ViewUtils
+import androidx.recyclerview.widget.RecyclerView
+import org.autojs.autojs.theme.ThemeColorManager
+import org.autojs.autojs.util.ViewUtils.excludePaddingClippableViewFromBottomNavigationBar
 import org.autojs.autojs6.R
 
 class PreferencesFragment : PreferenceFragmentCompat() {
@@ -14,9 +17,15 @@ class PreferencesFragment : PreferenceFragmentCompat() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        listView.edgeEffectFactory = object : RecyclerView.EdgeEffectFactory() {
+            override fun createEdgeEffect(recyclerView: RecyclerView, direction: Int): EdgeEffect {
+                return EdgeEffect(recyclerView.context).apply {
+                    color = ThemeColorManager.colorPrimary
+                }
+            }
+        }
         listView.isHorizontalScrollBarEnabled = false
         listView.isVerticalScrollBarEnabled = false
-        ViewUtils.excludePaddingClippableViewFromBottomNavigationBar(listView)
+        listView.excludePaddingClippableViewFromBottomNavigationBar()
     }
-
 }

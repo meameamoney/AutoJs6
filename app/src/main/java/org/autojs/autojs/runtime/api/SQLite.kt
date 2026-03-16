@@ -5,11 +5,11 @@ import android.content.Context
 import android.database.Cursor
 import org.autojs.autojs.annotation.ScriptInterface
 import org.autojs.autojs.core.database.Database
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.AnyExtensions.jsUnwrapped
-import org.autojs.autojs.extension.ArrayExtensions.toNativeArray
-import org.autojs.autojs.extension.ArrayExtensions.toNativeObject
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsUnwrapped
+import org.autojs.autojs.rhino.extension.IterableExtensions.toNativeArray
+import org.autojs.autojs.rhino.extension.MapExtensions.toNativeObject
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.util.RhinoUtils.coerceBoolean
 import org.autojs.autojs.util.RhinoUtils.coerceString
@@ -18,14 +18,14 @@ import org.mozilla.javascript.NativeObject
 
 class SQLite(private val context: Context, private val scriptRuntime: ScriptRuntime) {
 
-    fun open(name: String, version: Int, readOnly: Boolean, callback: Database.DatabaseCallback?): Database {
-        return Database(context, scriptRuntime, name, version, readOnly, callback, TypeAdapterImpl())
+    fun open(databaseFilePath: String, version: Int, readOnly: Boolean, callback: Database.DatabaseCallback?): Database {
+        return Database(context, scriptRuntime, databaseFilePath, version, readOnly, callback, TypeAdapterImpl())
     }
 
     private class TypeAdapterImpl : Database.TypeAdapter {
 
         override fun toContentValues(obj: Any?): ContentValues {
-            require(obj is Map<*, *>) { "Argument obj for toContentValue must be a Map<String, Object> instead of ${obj.jsBrief()}" }
+            require(obj is Map<*, *>) { "Argument \"obj\" ${obj.jsBrief()} for toContentValue must be a Map<String, Object>" }
             val contentValues = ContentValues()
             for ((k, v) in obj) {
                 val key = coerceString(k)

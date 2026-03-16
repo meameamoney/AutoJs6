@@ -3,6 +3,7 @@ package org.autojs.autojs.inrt.launch
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
@@ -17,6 +18,7 @@ import org.autojs.autojs.pio.UncheckedIOException
 import org.autojs.autojs.project.ProjectConfig
 import org.autojs.autojs.script.JavaScriptFileSource
 import org.autojs.autojs.script.JavaScriptSource
+import org.autojs.autojs.util.IntentUtils.startSafely
 import java.io.File
 import java.io.IOException
 
@@ -24,11 +26,17 @@ import java.io.IOException
  * Created by Stardust on Jan 24, 2018.
  */
 open class AssetsProjectLauncher(private val mAssetsProjectDir: String, private val mActivity: Context) {
+
     private val mProjectDir: String = File(mActivity.filesDir, "project/").path
     private val mProjectConfig: ProjectConfig = ProjectConfig.fromAssets(mActivity, ProjectConfig.configFileOfDir(mAssetsProjectDir))
     private val mMainScriptFile: File = File(mProjectDir, mProjectConfig.mainScriptFileName)
     private val mHandler: Handler = Handler(Looper.getMainLooper())
     private var mScriptExecution: ScriptExecution? = null
+
+    // TODO by SuperMonster003 on Mar 9, 2026.
+    //  ! 使其可配置.
+    //  ! Make it configurable.
+    private val finishDelay = 200L // 2000L
 
     init {
         prepare()
@@ -46,14 +54,17 @@ open class AssetsProjectLauncher(private val mAssetsProjectDir: String, private 
             } else {
                 // 否则显示日志界面并在日志界面中运行脚本
                 mHandler.post {
-                    activity.startActivity(
-                        Intent(mActivity, LogActivity::class.java)
-                            .putExtra(LogActivity.EXTRA_LAUNCH_SCRIPT, true)
-                    )
+                    Intent(mActivity, LogActivity::class.java)
+                        .putExtra(LogActivity.EXTRA_LAUNCH_SCRIPT, true)
+                        .startSafely(activity)
                     activity.finish()
                 }
             }
         }
+    }
+
+    fun launchOnBoot() {
+        runScript(null)
     }
 
     private fun runScript(activity: Activity?) {
@@ -68,7 +79,7 @@ open class AssetsProjectLauncher(private val mAssetsProjectDir: String, private 
             if (source.executionMode and JavaScriptSource.EXECUTION_MODE_UI != 0) {
                 config.intentFlags = Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_TASK_ON_HOME
             } else {
-                activity?.finish()
+                finishHostActivity(activity)
             }
             mScriptExecution = AutoJs.instance.scriptEngineService.execute(source, config)
         } catch (e: Exception) {
@@ -76,9 +87,29 @@ open class AssetsProjectLauncher(private val mAssetsProjectDir: String, private 
         }
     }
 
+    private fun finishHostActivity(activity: Activity?) {
+        val host = activity ?: return
+        val shouldDelayFinish = Pref.shouldHideLogs() || !mProjectConfig.launchConfig.isLogsVisible
+        if (!shouldDelayFinish) {
+            host.finish()
+            return
+        }
+        mHandler.postDelayed({
+            if (host.isFinishing || host.isDestroyed) {
+                return@postDelayed
+            }
+            host.finish()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                host.overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 0, 0)
+            } else {
+                @Suppress("DEPRECATION")
+                host.overridePendingTransition(0, 0)
+            }
+        }, finishDelay)
+    }
+
     private fun prepare() {
-        val projectConfigPath = PFiles.join(mProjectDir, ProjectConfig.CONFIG_FILE_NAME)
-        val projectConfig = ProjectConfig.fromFile(projectConfigPath)
+        val projectConfig = ProjectConfig.fromProjectDir(mProjectDir)
         if (projectConfig != null &&
             TextUtils.equals(projectConfig.buildInfo.buildId, mProjectConfig.buildInfo.buildId)
         ) {
@@ -107,7 +138,5 @@ open class AssetsProjectLauncher(private val mAssetsProjectDir: String, private 
         } catch (e: Exception) {
             e.printStackTrace()
         }
-
     }
-
 }

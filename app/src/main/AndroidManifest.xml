@@ -27,6 +27,12 @@
     <!--  ! Target API == 29: WRT + [ MSV<29> ] / WRT + [ MSV<28> ] + LGC -->
     <!--  ! Target API >= 30: WRT + [ MSV<29> ] + LGC  + MAN -->
 
+    <permission
+        android:name="org.autojs.permission.PLUGIN"
+        android:protectionLevel="signature" />
+
+    <uses-permission android:name="org.autojs.permission.PLUGIN" />
+
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -35,9 +41,15 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
 
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:ignore="SelectedPhotoAccess" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:ignore="SelectedPhotoAccess" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_AUDIO"
+        tools:ignore="SelectedPhotoAccess" />
 
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
@@ -155,12 +167,17 @@
 
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
+
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
@@ -209,22 +226,46 @@
         <activity
             android:name="org.autojs.autojs.ui.splash.SplashActivity"
             android:exported="true"
-            android:icon="@drawable/autojs6_material"
-            android:label="@string/app_name"
-            android:theme="@style/AppTheme.Splash"
-            tools:ignore="RedundantLabel">
-            <intent-filter>
-
-                <action android:name="android.intent.action.MAIN" />
-
-                <category android:name="${intentCategory}" />
-
-            </intent-filter>
+            android:theme="@style/AppTheme.Splash">
 
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/app_shortcuts" />
         </activity>
+
+        <activity-alias
+            android:name="org.autojs.autojs.launcher.AdaptiveIconAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="${icon}"
+            android:targetActivity="org.autojs.autojs.ui.splash.SplashActivity">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="${intentCategory}" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/app_shortcuts" />
+        </activity-alias>
+
+        <activity-alias
+            android:name="org.autojs.autojs.launcher.TransparentBackgroundIconAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/autojs6_material"
+            android:targetActivity="org.autojs.autojs.ui.splash.SplashActivity">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="${intentCategory}" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/app_shortcuts" />
+        </activity-alias>
 
         <activity
             android:name="org.autojs.autojs.ui.main.MainActivity"
@@ -241,7 +282,7 @@
             android:theme="@style/AppTheme.Settings" />
 
         <activity
-            android:name="org.autojs.autojs.ui.settings.DisplayVersionHistoriesActivity"
+            android:name="org.autojs.autojs.ui.settings.DisplayReleaseHistoryActivity"
             android:theme="@style/AppTheme.Settings" />
 
         <activity
@@ -249,12 +290,10 @@
             android:exported="true"
             android:taskAffinity="org.autojs.autojs.external.shortcut.ShortcutActivity"
             android:theme="@android:style/Theme.NoDisplay">
+
             <intent-filter>
-
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.DEFAULT" />
-
             </intent-filter>
         </activity>
 
@@ -263,6 +302,7 @@
             android:authorities="${authorities}"
             android:exported="false"
             android:grantUriPermissions="true">
+
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths" />
@@ -275,6 +315,10 @@
             android:multiprocess="true"
             android:taskAffinity="org.autojs.autojs.edit"
             android:theme="@style/EditorTheme" />
+
+        <activity
+            android:name="org.autojs.autojs.ui.edit.keyboard.SymbolsSettingsActivity"
+            android:theme="@style/AppTheme.Settings" />
 
         <activity
             android:name="org.autojs.autojs.ui.settings.AboutActivity"
@@ -290,8 +334,13 @@
             android:name="org.autojs.autojs.ui.settings.DeveloperOptionsActivity"
             android:theme="@style/AppTheme.Settings" />
 
-        <!-- <activity android:name="org.autojs.autojs.ui.error.ErrorReportActivity" android:process=":crash_report"/> -->
-        <activity android:name="org.autojs.autojs.ui.error.ErrorReportActivity" />
+        <activity
+            android:name="org.autojs.autojs.ui.error.CrashReportActivity"
+            android:process=":crash_report"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="${applicationId}.crash_report"
+            android:excludeFromRecents="true" />
 
         <activity
             android:name="org.autojs.autojs.external.tasker.TaskerScriptEditActivity"
@@ -309,6 +358,14 @@
         <activity android:name="org.autojs.autojs.ui.project.ProjectConfigActivity" />
 
         <activity android:name="org.autojs.autojs.ui.keystore.ManageKeyStoreActivity" />
+
+        <activity
+            android:name="org.autojs.autojs.ui.storage.TrashActivity"
+            android:theme="@style/AppTheme.Settings" />
+
+        <activity
+            android:name="org.autojs.autojs.ui.storage.VersionHistoryActivity"
+            android:theme="@style/AppTheme.Settings" />
 
         <activity
             android:name="org.autojs.autojs.ui.log.LogActivity"
@@ -347,20 +404,21 @@
             </intent-filter>
 
             <intent-filter>
-
                 <action android:name="android.intent.action.CREATE_SHORTCUT" />
-
                 <category android:name="android.intent.category.DEFAULT" />
-
             </intent-filter>
-
         </activity>
 
         <service android:name="org.autojs.autojs.ui.enhancedfloaty.FloatyService" />
 
         <service
-            android:name="org.autojs.autojs.external.foreground.MainActivityForegroundService"
-            android:foregroundServiceType="specialUse" />
+            android:name="org.autojs.autojs.external.foreground.AppForegroundService"
+            android:foregroundServiceType="specialUse">
+
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="To ensure the app can smoothly complete automation workflow even when running in the background" />
+        </service>
 
         <service android:name="org.autojs.autojs.external.ScriptExecutionIntentService" />
 
@@ -380,7 +438,6 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
-
         </service>
 
         <service
@@ -397,13 +454,11 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
-
         </service>
 
         <activity-alias
             android:name="org.autojs.autojs.external.tasker.PluginActivity"
             android:exported="true"
-            android:icon="@drawable/autojs6_material"
             android:label="@string/app_name"
             android:targetActivity="org.autojs.autojs.external.tasker.TaskPrefEditActivity"
             tools:ignore="ExportedActivity">
@@ -411,7 +466,6 @@
             <intent-filter>
                 <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
             </intent-filter>
-
         </activity-alias>
 
         <receiver
@@ -419,75 +473,43 @@
             android:exported="false">
 
             <intent-filter>
-
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-
                 <action android:name="android.intent.action.TIME_SET" />
-
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-
                 <action android:name="android.intent.action.UID_REMOVED" />
-
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
-
                 <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
-
                 <action android:name="android.intent.action.ACTION_SHUTDOWN" />
-
                 <action android:name="android.intent.action.ACTION_BATTERY_CHANGED" />
-
                 <action android:name="android.intent.action.DATE_CHANGED" />
-
                 <action android:name="android.intent.action.DREAMING_STARTED" />
-
                 <action android:name="android.intent.action.DREAMING_STOPPED" />
-
                 <action android:name="android.intent.action.HEADSET_PLUG" />
-
                 <action android:name="android.intent.action.INPUT_METHOD_CHANGED" />
-
                 <action android:name="android.intent.action.LOCALE_CHANGED" />
-
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
-
                 <action android:name="android.intent.action.MEDIA_CHECKING" />
-
                 <action android:name="android.intent.action.MEDIA_MOUNTED" />
-
                 <action android:name="android.intent.action.PACKAGE_FIRST_LAUNCH" />
-
                 <action android:name="android.intent.action.PROVIDER_CHANGED" />
-
                 <action android:name="android.intent.action.WALLPAPER_CHANGED" />
-
                 <action android:name="android.intent.action.USER_UNLOCKED" />
-
                 <action android:name="android.intent.action.USER_PRESENT" />
-
                 <action
                     android:name="android.net.conn.CONNECTIVITY_CHANGE"
                     tools:ignore="BatteryLife" />
-
             </intent-filter>
 
             <intent-filter>
-
                 <action android:name="android.intent.action.PACKAGE_ADDED" />
-
                 <action android:name="android.intent.action.PACKAGE_CHANGED" />
-
                 <action android:name="android.intent.action.PACKAGE_DATA_CLEARED" />
-
                 <action android:name="android.intent.action.PACKAGE_REMOVED" />
-
                 <action android:name="android.intent.action.PACKAGE_RESTARTED" />
 
                 <data android:scheme="package" />
-
             </intent-filter>
-
         </receiver>
 
         <receiver
@@ -501,87 +523,65 @@
             <intent-filter>
                 <action android:name="com.twofortyfouram.locale.intent.action.FIRE_SETTING" />
             </intent-filter>
-
         </receiver>
 
         <activity
             android:name="org.autojs.autojs.external.open.EditIntentActivity"
             android:exported="true"
-            android:icon="@drawable/autojs6_material"
             android:label="@string/text_edit_script">
+
             <intent-filter>
-
                 <action android:name="android.intent.action.VIEW" />
-
                 <action android:name="android.intent.action.EDIT" />
 
                 <category android:name="android.intent.category.DEFAULT" />
-
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="file" />
-
                 <data android:scheme="content" />
-
                 <data android:mimeType="application/x-javascript" />
-
                 <data android:mimeType="text/plain" />
-
             </intent-filter>
         </activity>
 
         <activity
             android:name="org.autojs.autojs.external.open.RunIntentActivity"
             android:exported="true"
-            android:icon="@drawable/autojs6_material"
             android:label="@string/text_run_script"
             android:taskAffinity="org.autojs.autojs.external.open.RunIntentActivity"
             android:theme="@android:style/Theme.NoDisplay">
+
             <intent-filter>
-
                 <action android:name="android.intent.action.VIEW" />
-
                 <action android:name="android.intent.action.EDIT" />
 
                 <category android:name="android.intent.category.DEFAULT" />
-
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="file" />
-
                 <data android:scheme="content" />
-
                 <data android:mimeType="application/x-javascript" />
-
                 <data android:mimeType="text/plain" />
-
             </intent-filter>
         </activity>
 
         <activity
             android:name="org.autojs.autojs.external.open.ImportIntentActivity"
             android:exported="true"
-            android:icon="@drawable/autojs6_material"
             android:label="@string/text_import_script"
             android:theme="@style/AppTheme.Transparent">
+
             <intent-filter>
-
                 <action android:name="android.intent.action.VIEW" />
-
                 <action android:name="android.intent.action.EDIT" />
 
                 <category android:name="android.intent.category.DEFAULT" />
-
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="file" />
-
                 <data android:scheme="content" />
-
                 <data android:mimeType="application/x-javascript" />
-
                 <data android:mimeType="text/plain" />
-
             </intent-filter>
         </activity>
 
@@ -590,6 +590,7 @@
             android:exported="false"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
@@ -606,12 +607,12 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/script_widget_config" />
-
         </receiver>
 
         <receiver
             android:name="org.autojs.autojs.timing.TaskReceiver"
             android:exported="false">
+
             <intent-filter>
                 <action android:name="org.autojs.autojs.action.task" />
             </intent-filter>
@@ -627,6 +628,42 @@
         <!--    </intent-filter>-->
         <!--</receiver>-->
 
+        <receiver
+            android:name="org.autojs.autojs.timing.TimedTaskAlarmReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name="org.autojs.autojs.timing.BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="org.autojs.autojs.inrt.InrtBootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="org.autojs.autojs.inrt.InrtPackageReplacedReceiver"
+            android:exported="false">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name="org.autojs.autojs.theme.app.ColorSelectActivity"
             android:theme="@style/MtAppTheme.FullScreen" />
@@ -638,6 +675,10 @@
         <activity
             android:name="org.autojs.autojs.theme.app.ColorItemsActivity"
             android:theme="@style/MtAppTheme.FullScreen" />
+
+        <activity
+            android:name="org.autojs.autojs.core.plugin.center.PluginCenterActivity"
+            android:theme="@style/AppTheme.Settings" />
 
         <activity
             android:name="org.autojs.autojs.execution.ScriptExecuteActivity"
@@ -669,7 +710,6 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
-
         </service>
 
         <service
@@ -680,6 +720,7 @@
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
             android:enabled="false"
             android:exported="false">
+
             <meta-data
                 android:name="autoStoreLocales"
                 android:value="true" />
@@ -691,21 +732,25 @@
             android:name="org.autojs.autojs.inrt.SplashActivity"
             android:exported="true"
             android:theme="@style/AppTheme.Splash">
+
             <intent-filter tools:ignore="ExtraText">
-
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="${intentCategoryInrt}" />
-
             </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/inrt_app_shortcuts" />
         </activity>
 
         <activity
             android:name="org.autojs.autojs.inrt.LogActivity"
+            android:exported="true"
             android:theme="@style/AppTheme.NoActionBarInrt" />
 
         <activity
             android:name="org.autojs.autojs.inrt.SettingsActivity"
+            android:exported="true"
             android:theme="@style/AppTheme.NoActionBarInrt" />
 
         <!-- This provider is required by Shizuku, remove this if your app only supports Sui -->
@@ -721,6 +766,18 @@
             android:name="moe.shizuku.client.V3_SUPPORT"
             android:value="true" />
 
-    </application>
+        <!-- @Hint by SuperMonster003 on Jul 25, 2025. -->
+        <!--  ! -->
+        <!--  ! This provider is explicitly excluded and manually initialized in org.autojs.autojs.App. -->
+        <!--  ! zh-CN: 此 provider 被显式排除, 并在 org.autojs.autojs.App 手动初始化. -->
+        <provider
+            android:name="com.google.mlkit.common.internal.MlKitInitProvider"
+            android:authorities="${applicationId}.mlkitinitprovider"
+            tools:node="remove" />
 
+        <provider
+            android:name="org.autojs.autojs.deviceid.DeviceIdProvider"
+            android:authorities="${applicationId}.deviceid.provider"
+            android:exported="true" />
+    </application>
 </manifest>

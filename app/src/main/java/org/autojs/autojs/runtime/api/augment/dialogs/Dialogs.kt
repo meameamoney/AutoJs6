@@ -1,28 +1,36 @@
 package org.autojs.autojs.runtime.api.augment.dialogs
 
+import android.os.Build
 import android.text.util.Linkify
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager.LayoutParams
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import com.afollestad.materialdialogs.Theme
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
 import org.autojs.autojs.core.ui.dialog.JsDialog
 import org.autojs.autojs.core.ui.dialog.JsDialogBuilder
 import org.autojs.autojs.core.ui.nativeview.NativeView
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.isJsString
-import org.autojs.autojs.extension.AnyExtensions.isJsXml
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.AnyExtensions.jsUnwrapped
-import org.autojs.autojs.extension.ArrayExtensions.toNativeArray
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
-import org.autojs.autojs.extension.ScriptableObjectExtensions.inquire
+import org.autojs.autojs.event.BackCompat.TAG_KEY_INSTALLED
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component2
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component3
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component4
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsString
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsXml
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsUnwrapped
+import org.autojs.autojs.rhino.extension.IterableExtensions.toNativeArray
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableObjectExtensions.inquire
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.api.augment.colors.Colors
 import org.autojs.autojs.runtime.api.augment.ui.UI
-import org.autojs.autojs.runtime.exception.ShouldNeverHappenException
 import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
 import org.autojs.autojs.util.RhinoUtils
 import org.autojs.autojs.util.RhinoUtils.NOT_CONSTRUCTABLE
@@ -36,12 +44,13 @@ import org.autojs.autojs.util.RhinoUtils.isUiThread
 import org.autojs.autojs.util.RhinoUtils.js_eval
 import org.autojs.autojs.util.RhinoUtils.newBaseFunction
 import org.autojs.autojs.util.RhinoUtils.newNativeObject
-import org.autojs.autojs.util.StringUtils
+import org.autojs.autojs.util.StringUtils.looseMatches
 import org.autojs.autojs6.R
 import org.mozilla.javascript.BaseFunction
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
+import org.mozilla.javascript.Scriptable
 
 class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
 
@@ -57,63 +66,101 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
         ::multiChoice.name,
     )
 
-    companion object {
+    companion object : ArgumentGuards() {
 
-        private const val CVT_DEFAULT = 0x0001
-        private const val CVT_DEFAULT_STRICT_BOOLEAN = 0x0002
-        private const val CVT_COLOR_INT = 0x0003
+        private enum class PropertyConverter {
+            COLOR_INT, BOOLEAN,
+        }
 
         private val propertySetterMap = mapOf(
-            "title" to CVT_DEFAULT,
-            "titleColor" to CVT_COLOR_INT,
-            "buttonRippleColor" to CVT_COLOR_INT,
-            "icon" to CVT_DEFAULT,
-            "iconRes" to CVT_DEFAULT,
-            "content" to CVT_DEFAULT,
-            "contentColor" to CVT_COLOR_INT,
-            "contentColorRes" to CVT_DEFAULT,
-            "contentLineSpacing" to CVT_DEFAULT,
-            "items" to CVT_DEFAULT,
-            "itemsColor" to CVT_COLOR_INT,
-            "itemsColorRes" to CVT_DEFAULT,
+            "titleColor" to PropertyConverter.COLOR_INT,
+            "buttonRippleColor" to PropertyConverter.COLOR_INT,
+            "contentColor" to PropertyConverter.COLOR_INT,
+            "itemsColor" to PropertyConverter.COLOR_INT,
             "positive" to "positiveText",
-            "positiveColor" to CVT_COLOR_INT,
-            "positiveColorRes" to CVT_DEFAULT,
+            "positiveColor" to PropertyConverter.COLOR_INT,
             "neutral" to "neutralText",
-            "neutralColor" to CVT_COLOR_INT,
-            "neutralColorRes" to CVT_DEFAULT,
+            "neutralColor" to PropertyConverter.COLOR_INT,
             "negative" to "negativeText",
-            "negativeColor" to CVT_COLOR_INT,
-            "negativeColorRes" to CVT_DEFAULT,
-            "linkColor" to CVT_COLOR_INT,
-            "linkColorRes" to CVT_DEFAULT,
+            "negativeColor" to PropertyConverter.COLOR_INT,
+            "linkColor" to PropertyConverter.COLOR_INT,
             "bg" to "background",
             "background" to "backgroundColor",
             "bgColor" to "backgroundColor",
-            "backgroundColor" to CVT_COLOR_INT,
+            "backgroundColor" to PropertyConverter.COLOR_INT,
             "bgColorRes" to "backgroundColorRes",
-            "backgroundColorRes" to CVT_DEFAULT,
-            "cancelable" to CVT_DEFAULT,
-            "canceledOnTouchOutside" to CVT_DEFAULT,
-            "autoDismiss" to CVT_DEFAULT,
-            "limitIconToDefaultSize" to CVT_DEFAULT_STRICT_BOOLEAN,
-            "alwaysCallSingleChoiceCallback" to CVT_DEFAULT_STRICT_BOOLEAN,
-            "alwaysCallMultiChoiceCallback" to CVT_DEFAULT_STRICT_BOOLEAN,
+            "limitIconToDefaultSize" to PropertyConverter.BOOLEAN,
+            "alwaysCallSingleChoiceCallback" to PropertyConverter.BOOLEAN,
+            "alwaysCallMultiChoiceCallback" to PropertyConverter.BOOLEAN,
         )
 
-        private val presetLinkifyMasks = listOf("all", "emailAddresses", "mapAddresses", "phoneNumbers", "webUrls")
+        @Suppress("DEPRECATION")
+        private val linkifyMasksMappings = listOf(
+            "webUrls" to Linkify.WEB_URLS,
+            "web" to Linkify.WEB_URLS,
+            "url" to Linkify.WEB_URLS,
+            "urls" to Linkify.WEB_URLS,
 
-        private val presetAnimations = listOf("default", "activity", "dialog", "inputMethod", "toast", "translucent")
+            "emailAddresses" to Linkify.EMAIL_ADDRESSES,
+            "email" to Linkify.EMAIL_ADDRESSES,
+
+            "phoneNumbers" to Linkify.PHONE_NUMBERS,
+            "phone" to Linkify.PHONE_NUMBERS,
+            "tel" to Linkify.PHONE_NUMBERS,
+
+            "mapAddresses" to Linkify.MAP_ADDRESSES,
+            "addresses" to Linkify.MAP_ADDRESSES,
+            "address" to Linkify.MAP_ADDRESSES,
+            "street" to Linkify.MAP_ADDRESSES,
+
+            "all" to Linkify.ALL,
+        )
+
+        private val animationMappings = listOf(
+            "default" to android.R.style.Animation,
+            "activity" to android.R.style.Animation_Activity,
+            "dialog" to android.R.style.Animation_Dialog,
+            "inputMethod" to android.R.style.Animation_InputMethod,
+            "toast" to android.R.style.Animation_Toast,
+            "translucent" to android.R.style.Animation_Translucent,
+        )
+
+        private val customJsPropertiesForBuild: Set<String> = setOf(
+            "animation",
+            "background",
+            "checkBoxChecked",
+            "checkBoxPrompt",
+            "customView",
+            "dimAmount",
+            "inputHint",
+            "inputPrefill",
+            "inputSingleLine",
+            "itemsSelectedIndex",
+            "itemsSelectedIndices",
+            "itemsSelectMode",
+            "keepScreenOn",
+            "linkify",
+            "onBackKey",
+            "onBackPressed",
+            "preset",
+            "progress",
+            "stubborn",
+            "theme",
+            "wrapInScrollView",
+        )
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun build(scriptRuntime: ScriptRuntime, args: Array<out Any?>): JsDialog = ensureArgumentsAtMost(args, 1) { argList ->
-            var (properties) = argList
-            if (properties.isJsNullish()) {
-                properties = newNativeObject().also { o -> o.defineProp("preset", true) }
+            val (propertiesRaw) = argList
+            require(propertiesRaw is NativeObject || propertiesRaw.isJsNullish()) {
+                "Argument properties ${propertiesRaw.jsBrief()} must be a JavaScript Object for dialogs.build"
             }
-            require(properties is NativeObject) {
-                "Argument properties ${properties.jsBrief()} must be a JavaScript Object for dialogs.build"
+            val properties = when {
+                propertiesRaw.isJsNullish() -> {
+                    newNativeObject().also { o -> o.defineProp("preset", true) }
+                }
+                else -> RhinoUtils.js_object_assign(newNativeObject(), propertiesRaw as Scriptable) as NativeObject
             }
             if (properties.inquire("preset", ::coerceBoolean, false)) {
                 checkPreset(properties, "title", R.string.text_preset_dialog_title)
@@ -125,7 +172,7 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
             val builder = scriptRuntime.dialogs.newBuilder().also {
                 it.thread = scriptRuntime.threads.currentThread()
             }
-            properties.forEach { entry ->
+            properties.minus("preset").forEach { entry ->
                 val (nameArg) = entry
                 val name = coerceString(nameArg)
                 applyDialogProperty(builder, name, properties.prop(name))
@@ -400,7 +447,7 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
             val selectedIndices = when {
                 defaultIndices.isJsNullish() -> intArrayOf()
                 defaultIndices is NativeArray -> defaultIndices.map { coerceIntNumber(it, 0) }.toIntArray()
-                else -> throw WrappedIllegalArgumentException("Argument defaultIndices ${defaultIndices.jsBrief()} for dialogs.multiChoice is invalid")
+                else -> throw WrappedIllegalArgumentException("Argument \"defaultIndices\" ${defaultIndices.jsBrief()} for dialogs.multiChoice is invalid")
             }
             val scope = scriptRuntime.topLevelScope
             when {
@@ -448,25 +495,26 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
         }
 
         private fun applyDialogProperty(builder: JsDialogBuilder, name: String, value: Any?) {
-            if (!propertySetterMap.containsKey(name)) return
-            when (val propertySetter = propertySetterMap[name]) {
-                CVT_DEFAULT -> invokeMethod(builder, name, arrayOf(value))
-                CVT_DEFAULT_STRICT_BOOLEAN -> {
-                    if (value == true) {
-                        invokeMethod(builder, name, emptyArray())
-                    }
-                }
-                CVT_COLOR_INT -> {
+            val propertySetter = propertySetterMap[name]
+            when {
+                propertySetter == PropertyConverter.COLOR_INT -> {
                     val colorInt = Colors.toIntRhino(value)
-                    invokeMethod(builder, name, arrayOf(colorInt))
+                    invokeJavaMethod(builder, name, arrayOf(colorInt))
                 }
-                is String -> when (propertySetter) {
+                propertySetter == PropertyConverter.BOOLEAN && coerceBoolean(value, false) -> {
+                    invokeJavaMethod(builder, name, emptyArray())
+                }
+                propertySetter is String -> when (propertySetter) {
                     in propertySetterMap -> {
                         applyDialogProperty(builder, propertySetter, value)
                     }
-                    else -> invokeMethod(builder, propertySetter, arrayOf(value))
+                    else -> invokeJavaMethod(builder, propertySetter, arrayOf(value))
                 }
-                else -> throw ShouldNeverHappenException()
+                else -> {
+                    if (!customJsPropertiesForBuild.contains(name)) {
+                        invokeJavaMethod(builder, name, arrayOf(value))
+                    }
+                }
             }
         }
 
@@ -531,7 +579,7 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
             if (!properties.prop("progress").isJsNullish()) {
                 val progress = properties.prop("progress")
                 require(progress is NativeObject) {
-                    "Property progress of argument properties for dialogs.build must be a JavaScript Object"
+                    "Property \"progress\" ${progress.jsBrief()} of argument properties for dialogs.build must be a JavaScript Object"
                 }
                 val max = progress.inquire("max", ::coerceIntNumber, 0)
                 val showMinMax = progress.inquire("showMinMax", ::coerceBoolean, false)
@@ -558,7 +606,7 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
                     customView = customView.unwrap()
                 }
                 require(customView is View) {
-                    "Property customView ${customView.jsBrief()} of argument properties for dialogs.build is invalid"
+                    "Property \"customView\" ${customView.jsBrief()} of argument properties for dialogs.build is invalid"
                 }
                 val wrapInScrollView = properties.inquire("wrapInScrollView", ::coerceBoolean, true)
                 builder.customView(customView, wrapInScrollView)
@@ -587,18 +635,19 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
         }
 
         private fun applyBuiltDialogProperties(scriptRuntime: ScriptRuntime, dialog: JsDialog, properties: NativeObject) {
-            if (!properties.prop("linkify").isJsString() && Context.toBoolean(properties.prop("linkify"))) {
+            if (!properties.prop("linkify").isJsNullish() && Context.toBoolean(properties.prop("linkify"))) {
+                val linkifyRaw = when (properties.prop("linkify")) {
+                    true -> "all"
+                    else -> properties.inquire("linkify", transformer = ::coerceString)
+                }
                 val autoLinkMask = run {
-                    var linkify = when (properties.prop("linkify")) {
-                        true -> "all"
-                        else -> properties.inquire("linkify", ::coerceString, "all")
-                    }
-                    if (presetLinkifyMasks.contains(linkify)) {
-                        linkify = linkify.replace(Regex("[A-Z]"), "_$&").uppercase()
-                    }
-                    runCatching { Linkify::class.java.getDeclaredField(linkify).get(null) }.getOrElse { e ->
-                        throw IllegalArgumentException("Unknown property linkify ${linkify.jsBrief()} of argument properties for dialogs.build", e)
-                    }.let(::coerceIntNumber)
+                    linkifyRaw?.let {
+                        linkifyMasksMappings.firstOrNull {
+                            it.first.looseMatches(linkifyRaw)
+                        }?.second
+                    } ?: throw IllegalArgumentException(
+                        "Unknown property linkify ${linkifyRaw.jsBrief()} of argument properties for dialogs.build",
+                    )
                 }
                 dialog.contentView?.let { view ->
                     val text = view.text
@@ -613,15 +662,76 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
                 }
             }
 
-            properties.prop("onBackKey")?.let { onBackKey ->
+            properties.inquire(listOf("onBackKey", "onBackPressed"))?.let { onBackKey ->
                 val isFunction = onBackKey is BaseFunction
                 val isDisabled = onBackKey == false || (onBackKey is String && onBackKey.matches(Regex("^disabled?$", RegexOption.IGNORE_CASE)))
                 if (isDisabled || isFunction) {
-                    dialog.setOnKeyListener { _, keyCode, event ->
-                        when {
-                            event.action != KeyEvent.ACTION_UP || keyCode != KeyEvent.KEYCODE_BACK -> false
-                            else -> true.also { if (onBackKey is BaseFunction) callFunction(scriptRuntime, onBackKey, arrayOf(dialog)) }
+                    dialog.setOnBackPressedFromJs {
+                        if (onBackKey is BaseFunction) {
+                            val result = callFunction(scriptRuntime, onBackKey, arrayOf(dialog))
+                            return@setOnBackPressedFromJs coerceBoolean(result, false)
                         }
+                        return@setOnBackPressedFromJs false
+                    }
+                    dialog.setOnKeyListener { _, keyCode, event ->
+                        if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_BACK) {
+                            dialog.onBackPressed()
+                            return@setOnKeyListener true
+                        }
+                        return@setOnKeyListener false
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        runCatching { if (dialog.window == null) dialog.create() }
+
+                        val decor = dialog.window?.decorView ?: run {
+                            val dispatcher = dialog.window?.onBackInvokedDispatcher
+                            dispatcher?.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY) {
+                                runCatching {
+                                    dialog.onBackPressed()
+                                }.onFailure {
+                                    runCatching { dialog.cancel() }.onFailure { runCatching { dialog.dismiss() } }
+                                }
+                            }
+                            return
+                        }
+
+                        if (decor.getTag(TAG_KEY_INSTALLED) == true) return
+                        decor.setTag(TAG_KEY_INSTALLED, true)
+
+                        var dispatcher: OnBackInvokedDispatcher? = null
+                        var callback: OnBackInvokedCallback? = null
+
+                        fun unregister() {
+                            val d = dispatcher
+                            val c = callback
+                            if (d != null && c != null) runCatching { d.unregisterOnBackInvokedCallback(c) }
+                            dispatcher = null
+                            callback = null
+                        }
+
+                        val listener = object : View.OnAttachStateChangeListener {
+                            override fun onViewAttachedToWindow(v: View) {
+                                unregister()
+                                val d = dialog.window?.onBackInvokedDispatcher
+                                val c = OnBackInvokedCallback {
+                                    runCatching {
+                                        dialog.onBackPressed()
+                                    }.onFailure {
+                                        runCatching { dialog.cancel() }.onFailure { runCatching { dialog.dismiss() } }
+                                    }
+                                }
+                                d?.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_OVERLAY, c)
+                                dispatcher = d
+                                callback = c
+                            }
+
+                            override fun onViewDetachedFromWindow(v: View) {
+                                unregister()
+                            }
+                        }
+
+                        decor.addOnAttachStateChangeListener(listener)
+                        if (decor.isAttachedToWindow) listener.onViewAttachedToWindow(decor)
                     }
                 }
             }
@@ -662,20 +772,18 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
             //  # }
 
             if (!properties.prop("animation").isJsNullish() && Context.toBoolean(properties.prop("animation"))) {
-                val animation = when (properties.prop("animation")) {
+                val animationRaw = when (properties.prop("animation")) {
                     true -> "default"
                     else -> properties.inquire("animation", ::coerceString, "default")
                 }
-                require(presetAnimations.contains(animation)) { "Unknown linkify: $animation" }
+                val animationStyle = animationMappings.firstOrNull {
+                    it.first.looseMatches(animationRaw)
+                }?.second ?: throw IllegalArgumentException(
+                    "Unknown property animation ${animationRaw.jsBrief()} of argument properties for dialogs.build",
+                )
                 dialog.window?.let { win ->
                     UI.postRhinoRuntime(scriptRuntime, newBaseFunction("action", {
-                        if (animation == "default") {
-                            win.setWindowAnimations(android.R.style.Animation)
-                        } else {
-                            val suffix = StringUtils.uppercaseFirstChar(animation.replace('-', '_'))
-                            val animationStyle = android.R.style::class.java.getDeclaredField("Animation_$suffix").getInt(null)
-                            win.setWindowAnimations(animationStyle)
-                        }
+                        win.setWindowAnimations(animationStyle)
                     }, NOT_CONSTRUCTABLE))
                 }
             }
@@ -695,7 +803,7 @@ class Dialogs(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime) {
             }
         }
 
-        private fun invokeMethod(builder: JsDialogBuilder, key: String, argsForMethod: Array<out Any?>) {
+        private fun invokeJavaMethod(builder: JsDialogBuilder, key: String, argsForMethod: Array<out Any?>) {
             val methods = builder.javaClass.methods
             val targetMethodsForName = methods.filter {
                 it.name == key

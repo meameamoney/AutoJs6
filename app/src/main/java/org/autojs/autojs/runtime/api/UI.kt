@@ -6,7 +6,7 @@ import android.view.View
 import org.autojs.autojs.core.ui.inflater.DynamicLayoutInflater
 import org.autojs.autojs.core.ui.inflater.ResourceParser
 import org.autojs.autojs.core.ui.inflater.util.Drawables
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
 import org.autojs.autojs.rhino.ProxyObject
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.util.RhinoUtils.newNativeObject
@@ -43,7 +43,7 @@ class UI(context: Context, private val scriptRuntime: ScriptRuntime) : ProxyObje
         it.context = context
     }
 
-    private val mProperties = ConcurrentHashMap<String, Any?>().also {
+    private val mProperties = ConcurrentHashMap<String, Any>().also {
         it["layoutInflater"] = layoutInflater
     }
 

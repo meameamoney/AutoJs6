@@ -2,6 +2,7 @@ package org.autojs.autojs.ui.explorer
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.ColorStateList
 import android.util.AttributeSet
 import android.util.Log
 import android.view.ContextThemeWrapper
@@ -12,15 +13,19 @@ import android.view.ViewGroup
 import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.core.view.isVisible
+import androidx.core.widget.ImageViewCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.afollestad.materialdialogs.MaterialDialog
 import io.reactivex.Completable
 import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.disposables.Disposable
 import io.reactivex.schedulers.Schedulers
+import org.autojs.autojs.util.DialogUtils
 import org.autojs.autojs.core.pref.Pref.getInt
 import org.autojs.autojs.core.pref.Pref.getLinkedList
 import org.autojs.autojs.core.pref.Pref.getStringOrNull
@@ -28,8 +33,6 @@ import org.autojs.autojs.core.pref.Pref.putInt
 import org.autojs.autojs.core.pref.Pref.putLinkedList
 import org.autojs.autojs.core.pref.Pref.putString
 import org.autojs.autojs.core.pref.Pref.remove
-import org.autojs.autojs.extension.ViewExtensions.setForceShowIconCompat
-import org.autojs.autojs.groundwork.WrapContentGridLayoutManger
 import org.autojs.autojs.model.explorer.Explorer
 import org.autojs.autojs.model.explorer.ExplorerChangeEvent
 import org.autojs.autojs.model.explorer.ExplorerDirPage
@@ -44,6 +47,7 @@ import org.autojs.autojs.model.script.Scripts
 import org.autojs.autojs.pio.PFile
 import org.autojs.autojs.pio.PFiles
 import org.autojs.autojs.project.ProjectConfig
+import org.autojs.autojs.storage.history.VersionHistoryController
 import org.autojs.autojs.theme.ThemeColorHelper
 import org.autojs.autojs.theme.ThemeColorManagerCompat
 import org.autojs.autojs.theme.widget.ThemeColorSwipeRefreshLayout
@@ -60,10 +64,12 @@ import org.autojs.autojs.ui.viewmodel.ExplorerItemManager.Companion.SORT_TYPE_SI
 import org.autojs.autojs.ui.viewmodel.ExplorerItemManager.Companion.SORT_TYPE_TYPE
 import org.autojs.autojs.ui.widget.BindableViewHolder
 import org.autojs.autojs.ui.widget.FirstCharView
+import org.autojs.autojs.util.ClipboardUtils
 import org.autojs.autojs.util.ColorUtils
 import org.autojs.autojs.util.EnvironmentUtils.externalStoragePath
 import org.autojs.autojs.util.FileUtils
 import org.autojs.autojs.util.Observers
+import org.autojs.autojs.util.ViewUtils.setForceShowIconCompat
 import org.autojs.autojs.util.ViewUtils.showSnack
 import org.autojs.autojs.util.WorkingDirectoryUtils
 import org.autojs.autojs.util.WorkingDirectoryUtils.path
@@ -75,13 +81,16 @@ import org.autojs.autojs6.databinding.ExplorerFirstCharIconBinding
 import org.autojs.autojs6.databinding.ExplorerViewBinding
 import org.greenrobot.eventbus.Subscribe
 import java.io.File
-import java.util.*
+import java.util.LinkedList
+import java.util.Objects
+import java.util.Stack
 import java.util.concurrent.Callable
 
 /**
  * Created by Stardust on Aug 21, 2017.
- * Modified by SuperMonster003 as of Apr 1, 2023.
  * Transformed by SuperMonster003 on Nov 23, 2024.
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Feb 3, 2026.
+ * Modified by SuperMonster003 as of Feb 3, 2026.
  */
 @SuppressLint("CheckResult", "NonConstantResourceId", "NotifyDataSetChanged")
 open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRefreshListener, PopupMenu.OnMenuItemClickListener {
@@ -124,26 +133,56 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
 
     private var mOnItemOperateListener: OnItemOperateListener? = null
 
-    private val mPageStateHistories = Stack<ExplorerPageState>()
+    private val mPageStateHistory = Stack<ExplorerPageState>()
     private var mDirectorySpanSize = 2
 
+    // Keep only one refresh chain running to avoid concurrent updates.
+    // zh-CN: 只允许一个刷新链路运行, 避免并发更新导致竞态问题.
+    private var mRefreshDisposable: Disposable? = null
+
+    // Unify action icon tint to match day/night theme, especially for overlay dialogs.
+    // zh-CN: 统一操作图标着色以匹配日/夜主题, 尤其用于 overlay 对话框场景.
+    private val mActionIconTint by lazy {
+        ColorStateList.valueOf(context.getColor(R.color.explorer_file_operation_button))
+    }
+
+    private val mChevronIconTint by lazy {
+        ColorStateList.valueOf(context.getColor(R.color.explorer_category_operation_button))
+    }
+
+    // Request host dialog to hide/show without losing state.
+    // zh-CN: 请求宿主对话框隐藏/显示且不丢失状态.
+    private var mRequestHostDialogHide: Runnable? = null
+    private var mRequestHostDialogShow: Runnable? = null
+
     constructor(context: Context) : super(context) {
-        init()
+        init(context)
     }
 
     constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
-        init()
+        init(context)
     }
 
-    private fun init() {
+    // Set hide callback from Java callers (e.g. CircularMenu).
+    // zh-CN: 提供给 Java 调用方 (例如 CircularMenu) 设置 hide 回调.
+    fun setRequestHostDialogHide(runnable: Runnable?) {
+        mRequestHostDialogHide = runnable
+    }
+
+    // Set show callback from Java callers (e.g. CircularMenu).
+    // zh-CN: 提供给 Java 调用方 (例如 CircularMenu) 设置 show 回调.
+    fun setRequestHostDialogShow(runnable: Runnable?) {
+        mRequestHostDialogShow = runnable
+    }
+
+    private fun init(context: Context) {
         ExplorerViewBinding.inflate(LayoutInflater.from(context), this, true).also { binding ->
             this.binding = binding
             binding.explorerItemList.also {
                 this.explorerItemListView = it
                 it.adapter = mExplorerAdapter
                 it.setHasFixedSize(true)
-                it.layoutManager = WrapContentGridLayoutManger(this.context, 2).also { manager ->
-                    manager.setDebugInfo(ExplorerView::class.java.simpleName)
+                it.layoutManager = GridLayoutManager(this.context, 2).also { manager ->
                     manager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
                         override fun getSpanSize(position: Int) = when {
                             position > positionOfCategoryDir && position < positionOfCategoryFile() -> {
@@ -189,11 +228,15 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
                 ExplorerChangeEvent.CREATE -> {
                     explorerItemManager.insertAtFront(event.newItem)
                     mExplorerAdapter.notifyItemInserted(event.newItem, 0)
+                    mExplorerAdapter.notifyItemChanged(positionOfCategoryDir)
+                    mExplorerAdapter.notifyItemChanged(positionOfCategoryFile())
                 }
                 ExplorerChangeEvent.REMOVE -> {
                     i = explorerItemManager.remove(item)
                     if (i >= 0) {
                         mExplorerAdapter.notifyItemRemoved(item, i)
+                        mExplorerAdapter.notifyItemChanged(positionOfCategoryDir)
+                        mExplorerAdapter.notifyItemChanged(positionOfCategoryFile())
                     }
                 }
             }
@@ -208,8 +251,13 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         mExplorer?.unregisterChangeListener(this)
-        mPageStateHistories.clear()
+        mPageStateHistory.clear()
         binding = null
+
+        // Cancel pending refresh to avoid late UI updates and concurrent iterations.
+        // zh-CN: 取消未完成的刷新, 避免延迟 UI 更新以及并发遍历导致的问题.
+        mRefreshDisposable?.dispose()
+        mRefreshDisposable = null
     }
 
     override fun onRefresh() {
@@ -221,42 +269,69 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.rename -> {
+            R.id.action_move_to -> {
+                ScriptOperations(context, this@ExplorerView, currentPage)
+                    .move(selectedItem!!.toScriptFile())
+                    .ignoreElements()
+                    .subscribe({}, { showErrorDialog(it, R.string.error_failed_to_move) })
+            }
+            R.id.action_copy_to -> {
+                ScriptOperations(context, this@ExplorerView, currentPage)
+                    .copy(selectedItem!!.toScriptFile())
+                    .ignoreElements()
+                    .subscribe({}, { showErrorDialog(it, R.string.error_failed_to_copy) })
+            }
+            R.id.action_rename -> {
                 ScriptOperations(context, this@ExplorerView, currentPage)
                     .rename(selectedItem as ExplorerFileItem?)
-                    .subscribe(Observers.emptyObserver())
+                    .ignoreElements()
+                    .subscribe({}, { showErrorDialog(it, R.string.error_failed_to_rename) })
             }
-            R.id.delete -> {
+            R.id.action_delete -> {
                 ScriptOperations(context, this@ExplorerView, currentPage)
                     .delete(selectedItem!!.toScriptFile())
             }
-            R.id.run_repeatedly -> {
+            R.id.action_version_history -> {
+                val selected = selectedItem ?: return false
+
+                // Show version history for this file and restore to disk when chosen.
+                // zh-CN: 显示该文件的版本历史, 选择后写回磁盘恢复.
+                VersionHistoryController(context).showForFilePath(selected.path, selected.path)
+
+                notifyItemOperated()
+                mRequestHostDialogHide?.run()
+            }
+            R.id.action_run_repeatedly -> {
                 ScriptLoopDialog(context, selectedItem!!.toScriptFile())
                     .show()
                 notifyItemOperated()
             }
-            R.id.create_shortcut -> {
+            R.id.action_create_shortcut -> {
                 ScriptOperations(context, this@ExplorerView, currentPage)
                     .createShortcut(selectedItem!!.toScriptFile())
+                mRequestHostDialogHide?.run()
             }
-            R.id.open_by_other_apps -> {
+            R.id.action_open_by_other_apps -> {
                 Scripts.openByOtherApps(selectedItem!!.toScriptFile())
                 notifyItemOperated()
             }
-            R.id.send -> {
+            R.id.action_send -> {
                 Scripts.send(context, selectedItem!!.toScriptFile())
                 notifyItemOperated()
+                mRequestHostDialogHide?.run()
             }
-            R.id.timed_task -> {
+            R.id.action_timed_task -> {
                 ScriptOperations(context, this@ExplorerView, currentPage)
                     .timedTask(selectedItem!!.toScriptFile())
                 notifyItemOperated()
+                mRequestHostDialogHide?.run()
             }
             R.id.action_build_apk -> {
                 BuildActivity.launch(context, selectedItem!!.path)
                 notifyItemOperated()
+                mRequestHostDialogHide?.run()
             }
-            R.id.reset -> {
+            R.id.action_reset -> {
                 val o = Explorers.Providers.workspace()
                     .resetSample(selectedItem!!.toScriptFile())
                 if (o == null) {
@@ -277,6 +352,30 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
             }
         }
         return true
+    }
+
+    private fun showErrorDialog(t: Throwable, titleRes: Int) {
+        DialogUtils.buildAndShowAdaptive {
+            MaterialDialog.Builder(context)
+                .title(titleRes)
+                .content(t.message ?: context.getString(R.string.error_unknown_exception))
+                .apply {
+                    t.message?.let { tMessage ->
+                        neutralText(R.string.dialog_button_copy)
+                        neutralColorRes(R.color.dialog_button_hint)
+                        onNeutral { d, _ ->
+                            ClipboardUtils.setClip(context, tMessage)
+                            showSnack(d.view, R.string.text_already_copied_to_clip, false)
+                        }
+                    }
+                }
+                .positiveText(R.string.dialog_button_dismiss)
+                .positiveColorRes(R.color.dialog_button_default)
+                .onPositive { d, _ -> d.dismiss() }
+                .cancelable(false)
+                .autoDismiss(false)
+                .build()
+        }
     }
 
     protected open fun onCreateViewHolder(inflater: LayoutInflater, parent: ViewGroup?, viewType: Int): BindableViewHolder<Any> {
@@ -317,7 +416,7 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
             //  # mCurrentPageState.scrollY = layoutManager.findLastCompletelyVisibleItemPosition();
             currentPageState.scrollY = layoutManager.findFirstCompletelyVisibleItemPosition()
         }
-        mPageStateHistories.push(currentPageState)
+        saveCurrentPageIntoHistory()
         setCurrentPageState(ExplorerPageState(childItemGroup))
         refreshCurrentPage()
     }
@@ -378,11 +477,11 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
     }
 
     fun canGoBack(): Boolean {
-        return !mPageStateHistories.empty()
+        return !mPageStateHistory.empty()
     }
 
     fun goBack() {
-        setCurrentPageState(mPageStateHistories.pop())
+        setCurrentPageState(mPageStateHistory.pop())
         refreshCurrentPage()
     }
 
@@ -439,19 +538,19 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
         val currentPath = currentPage.path
         putString(getPrefKey("explorer_current"), currentPath)
 
-        val rootPath = if (mPageStateHistories.isEmpty()) path else mPageStateHistories.firstElement().page!!.path
+        val rootPath = if (mPageStateHistory.isEmpty()) path else mPageStateHistory.firstElement().page!!.path
         putString(getPrefKey("explorer_root"), rootPath)
 
-        val histories = LinkedList<String>()
-        for (explorerPageState in mPageStateHistories) {
-            histories.add(
+        val historyItems = LinkedList<String>()
+        for (explorerPageState in mPageStateHistory) {
+            historyItems.add(
                 (explorerPageState.page!!.path
                         + "," + explorerPageState.scrollY
                         + "," + explorerPageState.dirsCollapsed
                         + "," + explorerPageState.filesCollapsed)
             )
         }
-        putLinkedList(getPrefKey("explorer_histories"), histories)
+        putLinkedList(getPrefKey("explorer_history"), historyItems)
     }
 
     // TODO by SuperMonster003 on Apr 1, 2023.
@@ -466,11 +565,11 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
             setDefaultExplorer()
         }
 
-        val storedHistories = getLinkedList(getPrefKey("explorer_histories"))
-        for (dataString in storedHistories) {
+        val storedHistory = getLinkedList(getPrefKey("explorer_history"))
+        for (dataString in storedHistory) {
             val split = dataString.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
             val (pagePath, scrollY, dirsCollapsed, filesCollapsed) = split
-            mPageStateHistories.push(ExplorerPageState(ExplorerDirPage.createRoot(pagePath)).also { pageState ->
+            mPageStateHistory.push(ExplorerPageState(ExplorerDirPage.createRoot(pagePath)).also { pageState ->
                 pageState.scrollY = scrollY.toInt()
                 pageState.dirsCollapsed = dirsCollapsed.toBoolean()
                 pageState.filesCollapsed = filesCollapsed.toBoolean()
@@ -483,7 +582,7 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
     }
 
     fun goUp() {
-        mPageStateHistories.push(currentPageState)
+        saveCurrentPageIntoHistory()
         val currentPagePath = currentPage.path
         val nextPagePath = if (Explorers.Providers.workspace().isCurrentSampleDir(currentDirectory)) {
             path
@@ -492,6 +591,10 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
         }
         setCurrentPageState(ExplorerPageState(ExplorerDirPage.createRoot(nextPagePath)))
         refreshCurrentPage()
+    }
+
+    fun saveCurrentPageIntoHistory() {
+        mPageStateHistory.push(currentPageState)
     }
 
     fun setDirectorySpanSize(directorySpanSize: Int) {
@@ -536,24 +639,41 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
     private fun refreshCurrentPage() {
         val explorer = mExplorer ?: return
         isRefreshing = true
-        explorer.fetchChildren(currentPage)
+
+        // Cancel the previous refresh to prevent multiple concurrent iterators on mutable data.
+        // zh-CN: 取消上一次刷新, 防止对可变数据产生多个并发迭代器.
+        mRefreshDisposable?.dispose()
+
+        mRefreshDisposable = explorer.fetchChildren(currentPage)
             .subscribeOn(Schedulers.io())
             .flatMapObservable { page: ExplorerPage? ->
                 currentPageState.page = page
-                Observable.fromIterable(page)
+
+                // Snapshot the iterable to avoid ConcurrentModificationException during iteration.
+                // zh-CN: 对可迭代对象做快照, 避免迭代期间被修改触发 ConcurrentModificationException.
+                val snapshot: List<ExplorerItem> = page?.toList() ?: emptyList()
+
+                Observable.fromIterable(snapshot)
             }
             .filter { f: ExplorerItem -> mFilter == null || mFilter!!.invoke(f) }
             .collectInto(explorerItemManager.cloneConfig(), ExplorerItemManager::add)
             .observeOn(Schedulers.computation())
             .doOnSuccess(ExplorerItemManager::sort)
             .observeOn(AndroidSchedulers.mainThread())
-            .subscribe { newManager: ExplorerItemManager ->
+            .doFinally {
+                // Always end the refreshing state even when errors happen.
+                // zh-CN: 无论成功或失败都要结束刷新状态.
+                isRefreshing = false
+            }
+            .subscribe({ newManager: ExplorerItemManager ->
                 mProjectToolbar.updateVisibility()
                 explorerItemManager = newManager
                 notifyDataSetChanged()
-                isRefreshing = false
                 post { scrollToPositionImmediately() }
-            }
+            }, { e ->
+                Log.e(LOG_TAG, "refreshCurrentPage() failed", e)
+                showSnack(this, R.string.error_refresh_failed, true)
+            })
     }
 
     private fun scrollToPositionSmoothly() {
@@ -701,6 +821,10 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
 
             mOptions = explorerFileBinding.more.apply { setOnClickListener { withItemSelected { showOptionsMenu() } } }
 
+            listOf(mRun, mEdit, mInfo, mInstall, mOptions).forEach { view ->
+                ImageViewCompat.setImageTintList(view, mActionIconTint)
+            }
+
             explorerFileBinding.item.setOnClickListener { withItemSelected { onItemClick() } }
         }
 
@@ -713,7 +837,7 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
 
             setTextWith(mName) { ExplorerViewHelper.getDisplayName(context, item) }
             setTextWith(mFileDate) { PFile.getFullDateString(item.lastModified()) }
-            setTextWith(mFileSize) { PFiles.getHumanReadableSize(item.size) }
+            setTextWith(mFileSize) { PFiles.formatSizeWithUnit(item.size) }
 
             Observable.fromCallable {
                 val shouldEditShow = item.isTextEditable || item.isExternalEditable
@@ -830,6 +954,7 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
         }
 
         private fun run() {
+            mRequestHostDialogHide?.run()
             when {
                 mExplorerItem.isExecutable -> {
                     Scripts.run(context, ScriptFile(mExplorerItem.path))
@@ -843,6 +968,8 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
         }
 
         private fun edit() {
+            mRequestHostDialogHide?.run()
+
             when {
                 mExplorerItem.isTextEditable -> {
                     Scripts.edit(context, ScriptFile(mExplorerItem.path))
@@ -856,19 +983,32 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
         }
 
         private fun showInfo() {
+            // Hide host overlay dialog so the info dialog can be shown on top.
+            // zh-CN: 隐藏宿主 overlay 对话框, 让信息对话框显示在最上层.
+            mRequestHostDialogHide?.run()
+
             when {
                 mExplorerItem.isInstallable -> {
-                    ApkInfoDialogManager.showApkInfoDialog(context, mExplorerItem.toScriptFile())
+                    ApkInfoDialogManager.showApkInfoDialog(context, mExplorerItem.toScriptFile(), null) {
+                        // Restore host dialog after the info dialog is dismissed.
+                        // zh-CN: 信息对话框关闭后恢复宿主对话框.
+                        mRequestHostDialogShow?.run()
+                    }
                     notifyItemOperated()
                 }
                 mExplorerItem.isMediaMenu || mExplorerItem.isMediaPlayable -> {
-                    MediaInfoDialogManager.showMediaInfoDialog(context, mExplorerItem)
+                    MediaInfoDialogManager.showMediaInfoDialog(context, mExplorerItem, null) {
+                        // Restore host dialog after the info dialog is dismissed.
+                        // zh-CN: 信息对话框关闭后恢复宿主对话框.
+                        mRequestHostDialogShow?.run()
+                    }
                     notifyItemOperated()
                 }
             }
         }
 
         private fun install() {
+            mRequestHostDialogHide?.run()
             when {
                 mExplorerItem.isInstallable -> {
                     mExplorerItem.install(this@ExplorerView)
@@ -887,15 +1027,24 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
             popupMenu.inflate(R.menu.menu_script_options)
             val menu = popupMenu.menu
             if (!mExplorerItem.isExecutable) {
-                menu.removeItem(R.id.create_shortcut)
-                menu.removeItem(R.id.timed_task)
-                menu.removeItem(R.id.run_repeatedly)
+                menu.removeItem(R.id.action_create_shortcut)
+                menu.removeItem(R.id.action_timed_task)
+                menu.removeItem(R.id.action_run_repeatedly)
             }
-            if (!mExplorerItem.canDelete()) {
-                menu.removeItem(R.id.delete)
+            if (!mExplorerItem.canMove()) {
+                menu.removeItem(R.id.action_move_to)
+            }
+            if (!mExplorerItem.canCopy()) {
+                menu.removeItem(R.id.action_copy_to)
             }
             if (!mExplorerItem.canRename()) {
-                menu.removeItem(R.id.rename)
+                menu.removeItem(R.id.action_rename)
+            }
+            if (!mExplorerItem.canDelete()) {
+                menu.removeItem(R.id.action_delete)
+            }
+            if (!mExplorerItem.isTextEditable) {
+                menu.removeItem(R.id.action_version_history)
             }
             if (!mExplorerItem.canBuildApk()) {
                 menu.removeItem(R.id.action_build_apk)
@@ -905,7 +1054,7 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
             }
             val samplePath = PFile(context.filesDir, WorkspaceFileProvider.SAMPLE_PATH).path
             if (!mExplorerItem.path.startsWith(samplePath)) {
-                menu.removeItem(R.id.reset)
+                menu.removeItem(R.id.action_reset)
             }
             popupMenu.setOnMenuItemClickListener(this@ExplorerView)
             popupMenu.show()
@@ -932,6 +1081,12 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
 
         private var mExplorerPage: ExplorerPage? = null
 
+        init {
+            listOf(mOptions).forEach { view ->
+                ImageViewCompat.setImageTintList(view, mActionIconTint)
+            }
+        }
+
         override fun bind(data: Any, position: Int) {
             if (data !is ExplorerPage) return
             mName.text = ExplorerViewHelper.getDisplayName(context, data)
@@ -946,46 +1101,64 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
         }
 
         private fun showOptionsMenu() {
+            val explorerPage = mExplorerPage ?: return
             val popupMenu = PopupMenu(context, mOptions)
             val menu = popupMenu.menu
             popupMenu.inflate(R.menu.menu_dir_options)
-            if (!mExplorerPage!!.canRename()) {
+            if (!explorerPage.canMove()) {
+                menu.removeItem(R.id.action_move_to)
+            }
+            if (!explorerPage.canCopy()) {
+                menu.removeItem(R.id.action_copy_to)
+            }
+            if (!explorerPage.canRename()) {
                 menu.removeItem(R.id.action_rename)
             }
-            if (!mExplorerPage!!.canDelete()) {
+            if (!explorerPage.canDelete()) {
                 menu.removeItem(R.id.action_delete)
             }
-            if (!mExplorerPage!!.canSetAsWorkingDir()) {
+            if (!explorerPage.canSetAsWorkingDir()) {
                 menu.removeItem(R.id.action_set_as_working_dir)
             }
-            if (!mExplorerPage!!.canBuildApk()) {
+            if (!explorerPage.canBuildApk()) {
                 menu.removeItem(R.id.action_build_apk)
             }
             val samplePath = PFile(context.filesDir, WorkspaceFileProvider.SAMPLE_PATH).path
-            if (!mExplorerPage!!.path.startsWith(samplePath)) {
-                menu.removeItem(R.id.reset)
+            if (!explorerPage.path.startsWith(samplePath)) {
+                menu.removeItem(R.id.action_reset)
             }
             popupMenu.setOnMenuItemClickListener { item: MenuItem ->
+                val selectedItem = selectedItem ?: return@setOnMenuItemClickListener false
+                val explorerView = this@ExplorerView
                 when (item.itemId) {
-                    R.id.action_rename -> {
-                        ScriptOperations(context, this@ExplorerView, currentPage)
-                            .rename(selectedItem as ExplorerFileItem?)
-                            .subscribe(Observers.emptyObserver())
-                    }
-                    R.id.action_delete -> {
-                        ScriptOperations(context, this@ExplorerView, currentPage)
-                            .delete(selectedItem!!.toScriptFile())
-                    }
-                    R.id.action_set_as_working_dir -> {
-                        ScriptOperations(context, this@ExplorerView, currentPage)
-                            .setAsWorkingDir(selectedItem!!.toScriptFile())
-                    }
+                    R.id.action_copy_to ->
+                        ScriptOperations(context, explorerView, currentPage)
+                            .copy(selectedItem.toScriptFile())
+                            .ignoreElements()
+                            .subscribe({}, { showErrorDialog(it, R.string.error_failed_to_copy) })
+                    R.id.action_move_to ->
+                        ScriptOperations(context, explorerView, currentPage)
+                            .move(selectedItem.toScriptFile())
+                            .ignoreElements()
+                            .subscribe({}, { showErrorDialog(it, R.string.error_failed_to_move) })
+                    R.id.action_rename ->
+                        ScriptOperations(context, explorerView, currentPage)
+                            .rename(selectedItem as? ExplorerFileItem)
+                            .ignoreElements()
+                            .subscribe({}, { showErrorDialog(it, R.string.error_failed_to_rename) })
+                    R.id.action_delete ->
+                        ScriptOperations(context, explorerView, currentPage)
+                            .delete(selectedItem.toScriptFile())
+                    R.id.action_set_as_working_dir ->
+                        ScriptOperations(context, explorerView, currentPage)
+                            .setAsWorkingDir(selectedItem.toScriptFile())
                     R.id.action_build_apk -> {
-                        BuildActivity.launch(context, selectedItem!!.path)
+                        mRequestHostDialogHide?.run()
+                        BuildActivity.launch(context, selectedItem.path)
                     }
-                    R.id.reset -> {
+                    R.id.action_reset -> {
                         val o = Explorers.Providers.workspace()
-                            .resetSample(selectedItem!!.toScriptFile())
+                            .resetSample(selectedItem.toScriptFile())
                         if (o == null) {
                             resetFailed()
                         } else {
@@ -1019,6 +1192,8 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
 
         init {
             setOnClickListeners()
+
+            ImageViewCompat.setImageTintList(binding.arrowIcon, mChevronIconTint)
         }
 
         private fun setOnClickListeners() {
@@ -1079,7 +1254,9 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
         @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
         override fun bind(isDirCategory: Any, position: Int) {
             if (isDirCategory !is Boolean) return
-            binding.title.setText(if (isDirCategory) R.string.text_directory else R.string.text_file)
+            val titleRes = if (isDirCategory) R.string.text_folder else R.string.text_file
+            val count = if (isDirCategory) explorerItemManager.groupCount() else explorerItemManager.itemCount()
+            binding.title.text = "${context.getString(titleRes)}  [ $count ]"
             mIsDir = isDirCategory
             if (isDirCategory && canGoUp()) {
                 binding.goUp.visibility = VISIBLE
@@ -1149,7 +1326,7 @@ open class ExplorerView : ThemeColorSwipeRefreshLayout, SwipeRefreshLayout.OnRef
             remove(getPrefKey("page_state"))
             remove(getPrefKey("explorer_current"))
             remove(getPrefKey("explorer_root"))
-            remove(getPrefKey("explorer_histories"))
+            remove(getPrefKey("explorer_history"))
         }
 
         fun getPrefKey(key: String): String = ExplorerView::class.java.simpleName + '.' + key

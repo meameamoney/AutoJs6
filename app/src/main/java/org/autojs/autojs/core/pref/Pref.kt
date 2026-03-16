@@ -5,8 +5,10 @@ import android.content.SharedPreferences
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener
 import android.content.res.Resources
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.google.gson.Gson
+import org.autojs.autojs.AbstractAutoJs.Companion.isInrt
 import org.autojs.autojs.App.Companion.app
 import org.autojs.autojs.annotation.KeyRes
 import org.autojs.autojs.annotation.ScriptInterfaceCompatible
@@ -25,6 +27,7 @@ import java.util.*
 
 /**
  * Created by Stardust on Jan 31, 2017.
+ * Modified by SuperMonster003 as of Jan 17, 2026.
  */
 object Pref {
 
@@ -61,6 +64,18 @@ object Pref {
     fun get(): SharedPreferences = sPref
 
     @JvmStatic
+    val screenCaptureRequestDelay: Int
+        get() {
+            // Default 350ms is a practical value for most ROMs' permission dialog fade-out animation.
+            // zh-CN: 默认 350ms 通常可覆盖多数 ROM 授权弹窗的渐隐动画时间.
+            val defValue = resources.getInteger(R.integer.screen_capture_request_delay_default_value)
+            val minValue = resources.getInteger(R.integer.screen_capture_request_delay_min_value)
+            val maxValue = resources.getInteger(R.integer.screen_capture_request_delay_max_value)
+            val value = getInt(R.string.key_screen_capture_request_delay, defValue)
+            return value.coerceIn(minValue, maxValue)
+        }
+
+    @JvmStatic
     val isExtendingJsBuildInObjectsEnabled
         get() = getBoolean(
             R.string.key_extending_js_build_in_objects,
@@ -82,7 +97,14 @@ object Pref {
         )
 
     @JvmStatic
-    val isAutoCheckForUpdatesEnabled: Boolean
+    val isUseVolumeControlRecordEnabled
+        get() = getBoolean(
+            R.string.key_use_volume_control_record,
+            resources.getBoolean(R.bool.pref_use_volume_control_record),
+        )
+
+    @JvmStatic
+    val isAutoCheckForUpdatesEnabled
         get() = getBoolean(
             R.string.key_auto_check_for_updates,
             resources.getBoolean(R.bool.pref_auto_check_for_updates),
@@ -99,7 +121,7 @@ object Pref {
                 return null
             }
             val dt = DateTime(ts)
-            val fmt = DateTimeFormat.forPattern("yyyy/MM/dd HH:mm")
+            val fmt = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm")
             return fmt.print(dt)
         }
 
@@ -140,6 +162,14 @@ object Pref {
             R.string.key_gesture_observing,
             resources.getBoolean(R.bool.pref_gesture_observing)
         )
+
+    @JvmStatic
+    val isQuickRestartEnabled
+        get() = getString(R.string.key_restart_strategy, key(R.string.default_key_restart_strategy)) == key(R.string.key_restart_strategy_quick)
+
+    @JvmStatic
+    val isScheduledRestartPreferredWorkManager
+        get() = getString(R.string.key_scheduled_restart_backend, key(R.string.default_key_scheduled_restart_backend)) == key(R.string.key_scheduled_restart_backend_work_manager)
 
     @JvmStatic
     val isHiddenFilesShown
@@ -200,12 +230,12 @@ object Pref {
     fun refreshLastUpdatesAutoCheckedTimestamp() = updateTimestamp(R.string.key_last_updates_auto_checked)
 
     @JvmStatic
-    fun clearUpdatesCheckedStates() = sPref.edit()
-        .remove(key(R.string.key_last_no_newer_updates))
-        .remove(key(R.string.key_last_updates_postponed))
-        .remove(key(R.string.key_last_updates_checked))
-        .remove(key(R.string.key_last_updates_auto_checked))
-        .apply()
+    fun clearUpdatesCheckedStates() = sPref.edit {
+        remove(key(R.string.key_last_no_newer_updates))
+            .remove(key(R.string.key_last_updates_postponed))
+            .remove(key(R.string.key_last_updates_checked))
+            .remove(key(R.string.key_last_updates_auto_checked))
+    }
 
     @JvmStatic
     fun shouldStartA11yServiceWithRoot() = getBoolean(
@@ -222,7 +252,7 @@ object Pref {
     private fun updateTimestamp(@KeyRes keyRes: Int) = putLong(keyRes, System.currentTimeMillis())
 
     @JvmStatic
-    fun getServerAddress(): String = getString(R.string.key_server_address, NetworkUtils.getGatewayAddress())
+    fun getServerAddress(): String = getString(R.string.key_server_address, if (!isInrt) NetworkUtils.getGatewayAddress() else NetworkUtils.DEFAULT_IP_ADDRESS)
 
     @JvmStatic
     fun setServerAddress(address: String?) = putString(R.string.key_server_address, address)
@@ -240,7 +270,10 @@ object Pref {
     fun putString(@KeyRes keyRes: Int, value: String?) = putString(key(keyRes), value)
 
     @JvmStatic
-    fun putString(key: String, value: String?) = sPref.edit().putString(key, value).apply()
+    fun putString(key: String, value: String?) = sPref.edit { putString(key, value) }
+
+    @JvmStatic
+    fun putStringSync(key: String, value: String?) = sPref.edit(commit = true) { putString(key, value) }
 
     @JvmStatic
     fun getString(@KeyRes keyRes: Int, @KeyRes defKeyRes: Int): String = sPref.getString(key(keyRes), key(defKeyRes))!!
@@ -264,13 +297,16 @@ object Pref {
     fun putBooleanSync(@KeyRes keyRes: Int, value: Boolean) = putBooleanSync(key(keyRes), value)
 
     @JvmStatic
-    fun putBoolean(key: String, value: Boolean) = sPref.edit().putBoolean(key, value).apply()
+    fun putBoolean(key: String, value: Boolean) = sPref.edit { putBoolean(key, value) }
 
     @JvmStatic
-    fun putBooleanSync(key: String, value: Boolean) = sPref.edit().putBoolean(key, value).commit()
+    fun putBooleanSync(key: String, value: Boolean) = sPref.edit(commit = true) { putBoolean(key, value) }
 
     @JvmStatic
     fun getBoolean(@KeyRes keyRes: Int, defValue: Boolean) = getBoolean(key(keyRes), defValue)
+
+    @JvmStatic
+    fun getBoolean(@KeyRes keyRes: Int, @KeyRes defValue: Int) = getBoolean(key(keyRes), resources.getBoolean(defValue))
 
     @JvmStatic
     fun getBoolean(key: String, defValue: Boolean) = sPref.getBoolean(key, defValue)
@@ -279,16 +315,16 @@ object Pref {
     fun putInt(@KeyRes keyRes: Int, value: Int) = putInt(key(keyRes), value)
 
     @JvmStatic
-    fun putInt(key: String, value: Int) = sPref.edit().putInt(key, value).apply()
+    fun putInt(key: String, value: Int) = sPref.edit { putInt(key, value) }
 
     @JvmStatic
-    fun putIntSync(key: String, value: Int) = sPref.edit().putInt(key, value).commit()
+    fun putIntSync(key: String, value: Int) = sPref.edit(commit = true) { putInt(key, value) }
 
     @JvmStatic
-    fun putFloat(key: String, value: Float) = sPref.edit().putFloat(key, value).apply()
+    fun putFloat(key: String, value: Float) = sPref.edit { putFloat(key, value) }
 
     @JvmStatic
-    fun putFloatSync(key: String, value: Float) = sPref.edit().putFloat(key, value).commit()
+    fun putFloatSync(key: String, value: Float) = sPref.edit(commit = true) { putFloat(key, value) }
 
     @JvmStatic
     fun getInt(@KeyRes keyRes: Int, defValue: Int): Int = getInt(key(keyRes), defValue)
@@ -300,13 +336,19 @@ object Pref {
     fun getFloat(key: String, defValue: Float): Float = sPref.getFloat(key, defValue)
 
     @JvmStatic
-    fun putLong(@KeyRes keyRes: Int, value: Long) = sPref.edit().putLong(key(keyRes), value).apply()
+    fun putLong(@KeyRes keyRes: Int, value: Long) = sPref.edit { putLong(key(keyRes), value) }
+
+    @JvmStatic
+    fun putLong(key: String, value: Long) = sPref.edit { putLong(key, value) }
 
     @JvmStatic
     fun getLong(@KeyRes keyRes: Int, defValue: Long) = sPref.getLong(key(keyRes), defValue)
 
     @JvmStatic
-    fun putStringSet(@KeyRes keyRes: Int, values: MutableSet<String>) = sPref.edit().putStringSet(key(keyRes), values).apply()
+    fun getLong(key: String, defValue: Long) = sPref.getLong(key, defValue)
+
+    @JvmStatic
+    fun putStringSet(@KeyRes keyRes: Int, values: MutableSet<String>) = sPref.edit { putStringSet(key(keyRes), values) }
 
     @JvmStatic
     fun getStringSet(@KeyRes keyRes: Int, defValues: MutableSet<String>?): MutableSet<String>? = sPref.getStringSet(key(keyRes), defValues)
@@ -321,7 +363,7 @@ object Pref {
     fun containsKey(key: String): Boolean = sPref.all.containsKey(key)
 
     @JvmStatic
-    fun remove(key: String) = sPref.edit().remove(key).apply()
+    fun remove(key: String) = sPref.edit { remove(key) }
 
     @JvmStatic
     fun getLinkedHashSet(@KeyRes keyRes: Int): LinkedHashSet<String> = when {

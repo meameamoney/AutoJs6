@@ -13,8 +13,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.autojs.autojs.extension.MaterialDialogExtensions.makeTextCopyable
-import org.autojs.autojs.extension.MaterialDialogExtensions.setCopyableTextIfAbsent
+import org.autojs.autojs.util.DialogUtils.showAdaptive
+import org.autojs.autojs.util.DialogUtils.makeTextCopyable
+import org.autojs.autojs.util.DialogUtils.setCopyableTextIfAbsent
 import org.autojs.autojs.external.fileprovider.AppFileProvider
 import org.autojs.autojs.pio.PFiles
 import org.autojs.autojs.runtime.api.Mime
@@ -23,7 +24,7 @@ import org.autojs.autojs.util.IntentUtils.SnackExceptionHolder
 import org.autojs.autojs.util.StringUtils
 import org.autojs.autojs.util.StringUtils.dropBom
 import org.autojs.autojs6.R
-import org.autojs.autojs6.databinding.EditableFileInfoDialogListItemBinding
+import org.autojs.autojs6.databinding.EditableFileInfoDialogItemsBinding
 import java.io.File
 import java.nio.charset.Charset
 import java.nio.file.Files
@@ -37,10 +38,12 @@ object EditableFileInfoDialogManager {
             MaterialDialog.Builder(context)
                 .title(R.string.text_failed)
                 .content(R.string.file_not_exist_or_readable)
-                .show()
+                .positiveText(R.string.dialog_button_dismiss)
+                .positiveColorRes(R.color.dialog_button_default)
+                .showAdaptive()
             return
         }
-        val binding = EditableFileInfoDialogListItemBinding.inflate(LayoutInflater.from(context))
+        val binding = EditableFileInfoDialogItemsBinding.inflate(LayoutInflater.from(context))
 
         val textUnknown = context.getString(R.string.text_unknown)
 
@@ -55,7 +58,7 @@ object EditableFileInfoDialogManager {
             .limitIconToDefaultSize()
             .positiveText(R.string.dialog_button_dismiss)
             .positiveColorRes(R.color.dialog_button_default)
-            .show()
+            .showAdaptive()
             .apply {
                 makeTextCopyable { titleView }
                 setOnDismissListener { scope.cancel() }
@@ -90,7 +93,7 @@ object EditableFileInfoDialogManager {
                     setCopyableTextIfAbsent(binding.lineCountValue, textUnknown)
                     setCopyableTextIfAbsent(binding.charCountValue, textUnknown)
                     setCopyableTextIfAbsent(binding.lineBreakValue, textUnknown)
-                    setCopyableTextIfAbsent(binding.fileSizeValue, scope) { PFiles.getHumanReadableSize(file.length()) }
+                    setCopyableTextIfAbsent(binding.fileSizeValue, scope) { PFiles.formatSizeWithUnit(file.length()) }
                 }
                 else -> dialog.apply {
                     val charsetMatch = StringUtils.detectCharset(bytes)
@@ -119,7 +122,7 @@ object EditableFileInfoDialogManager {
         }
     }
 
-    private fun updateGuidelines(binding: EditableFileInfoDialogListItemBinding) {
+    private fun updateGuidelines(binding: EditableFileInfoDialogItemsBinding) {
         val bindings = listOf(
             binding.filePathLabel to binding.filePathGuideline,
             binding.fileSizeLabel to binding.fileSizeGuideline,
@@ -165,7 +168,7 @@ object EditableFileInfoDialogManager {
 
     private fun getReadableSizeString(context: Context, charset: Charset, bytes: ByteArray, text: String): Pair<String, String?> {
         val (size, suffix) = getByteCount(context, charset, bytes, text)
-        return PFiles.getHumanReadableSize(size) to suffix
+        return PFiles.formatSizeWithUnit(size) to suffix
     }
 
     private fun getByteCountString(context: Context, charset: Charset, bytes: ByteArray, text: String): Pair<String, String?> {

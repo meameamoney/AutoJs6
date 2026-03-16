@@ -11,10 +11,10 @@ open class AccessibilityService(final override val context: Context) : ServiceIt
     private val mA11yTool = AccessibilityTool(context)
 
     override val isRunning
-        get() = mA11yTool.serviceExists() || mA11yTool.isServiceRunning()
+        get() = mA11yTool.hasService() || mA11yTool.isRunning()
 
-    override fun active(): Boolean {
-        return mA11yTool.restartService(true)
+    override fun active() {
+        mA11yTool.restartService(true)
     }
 
     override fun start(): Boolean {
@@ -44,7 +44,7 @@ open class AccessibilityService(final override val context: Context) : ServiceIt
     }
 
     override fun onToggleSuccess() {
-        if (mA11yTool.serviceExists() && !mA11yTool.isServiceRunning()) {
+        if (mA11yTool.hasService() && !mA11yTool.isRunning()) {
             ViewUtils.showToast(context, R.string.text_a11y_service_enabled_but_not_running, true)
         }
         super.onToggleSuccess()

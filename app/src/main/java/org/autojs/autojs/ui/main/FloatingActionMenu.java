@@ -2,9 +2,11 @@ package org.autojs.autojs.ui.main;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -20,15 +22,13 @@ import androidx.interpolator.view.animation.FastOutSlowInInterpolator;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import io.reactivex.subjects.PublishSubject;
 import org.autojs.autojs6.R;
+import org.jetbrains.annotations.NotNull;
 
 /**
  * Created by Stardust on Sep 24, 2017.
+ * Modified by SuperMonster003 as of Dec 29, 2025.
  */
 public class FloatingActionMenu extends FrameLayout implements View.OnClickListener {
-
-    public interface OnFloatingActionButtonClickListener {
-        void onClick(FloatingActionButton button, int pos);
-    }
 
     private static final int[] ICONS = {
             R.drawable.ic_floating_action_menu_dir,
@@ -37,22 +37,25 @@ public class FloatingActionMenu extends FrameLayout implements View.OnClickListe
             R.drawable.ic_project_white};
 
     private static final int[] LABELS = {
-            R.string.text_directory,
+            R.string.text_folder,
             R.string.text_file,
             R.string.text_import,
             R.string.text_project};
 
-    private View mOverlay = null;
+    private static final int ANIMATION_INTERVAL = 30;
+    private static final int ANIMATION_DURATION = 250;
 
+    private final Interpolator mInterpolator = new FastOutSlowInInterpolator();
+    private final PublishSubject<Boolean> mState = PublishSubject.create();
+
+    private View mOverlay = null;
     private FloatingActionButton[] mFabs;
     private View[] mFabContainers;
     private boolean mExpanded = false;
-    private boolean mShouldCheckExpanded = true;
-    private final int mInterval = 30;
-    private final int mDuration = 250;
-    private final Interpolator mInterpolator = new FastOutSlowInInterpolator();
-    private final PublishSubject<Boolean> mState = PublishSubject.create();
     private OnFloatingActionButtonClickListener mOnFloatingActionButtonClickListener;
+
+    private View mToggleFab;
+    private int[] mToggleFabLoc;
 
     public FloatingActionMenu(@NonNull Context context) {
         super(context);
@@ -69,16 +72,12 @@ public class FloatingActionMenu extends FrameLayout implements View.OnClickListe
         init();
     }
 
-    private void init() {
-        buildFabs(ICONS, LABELS);
-    }
-
     public boolean isExpanded() {
         return mExpanded;
     }
 
-    public boolean shouldCheckExpanded() {
-        return mShouldCheckExpanded;
+    public PublishSubject<Boolean> getState() {
+        return mState;
     }
 
     public void expand() {
@@ -86,29 +85,11 @@ public class FloatingActionMenu extends FrameLayout implements View.OnClickListe
         setVisibility(VISIBLE);
         int h = mFabs[0].getHeight();
         for (int i = 0; i < mFabContainers.length; i++) {
-            animateY(mFabContainers[i], -(h + mInterval) * (i + 1), null);
+            animateY(mFabContainers[i], -(h + ANIMATION_INTERVAL) * (i + 1), null);
             rotate(mFabs[i]);
         }
         mExpanded = true;
         mState.onNext(true);
-    }
-
-    private void rotate(FloatingActionButton fab) {
-        fab.setRotation(0);
-        fab.animate()
-                .rotation(360)
-                .setDuration(mDuration)
-                .setInterpolator(mInterpolator)
-                .start();
-    }
-
-    private void animateY(View view, float y, Animator.AnimatorListener l) {
-        view.animate()
-                .translationY(y)
-                .setDuration(mDuration)
-                .setInterpolator(mInterpolator)
-                .setListener(l)
-                .start();
     }
 
     public void collapse() {
@@ -117,7 +98,6 @@ public class FloatingActionMenu extends FrameLayout implements View.OnClickListe
             @Override
             public void onAnimationEnd(Animator animation) {
                 setVisibility(INVISIBLE);
-                mShouldCheckExpanded = true;
             }
         });
         for (int i = 1; i < mFabContainers.length; i++) {
@@ -126,6 +106,56 @@ public class FloatingActionMenu extends FrameLayout implements View.OnClickListe
         }
         mExpanded = false;
         mState.onNext(false);
+    }
+
+    public void setOnFloatingActionButtonClickListener(OnFloatingActionButtonClickListener listener) {
+        mOnFloatingActionButtonClickListener = listener;
+    }
+
+    public void setToggleFab(@Nullable View toggleFab, int @NotNull [] locFab) {
+        mToggleFab = toggleFab;
+        mToggleFabLoc = locFab;
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        int heightMode = MeasureSpec.getMode(heightMeasureSpec);
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        if (heightMode == MeasureSpec.EXACTLY) {
+            return;
+        }
+        int h = mFabContainers[0].getMeasuredHeight();
+        setMeasuredDimension(getMeasuredWidth(), (h + ANIMATION_INTERVAL) * mFabs.length + h);
+    }
+
+    @Override
+    public void onClick(View v) {
+        collapse();
+        if (mOnFloatingActionButtonClickListener != null) {
+            mOnFloatingActionButtonClickListener.onClick((FloatingActionButton) v, (int) v.getTag());
+        }
+    }
+
+    private void init() {
+        buildFabs(ICONS, LABELS);
+    }
+
+    private void rotate(FloatingActionButton fab) {
+        fab.setRotation(0);
+        fab.animate()
+                .rotation(360)
+                .setDuration(ANIMATION_DURATION)
+                .setInterpolator(mInterpolator)
+                .start();
+    }
+
+    private void animateY(View view, float y, Animator.AnimatorListener l) {
+        view.animate()
+                .translationY(y)
+                .setDuration(ANIMATION_DURATION)
+                .setInterpolator(mInterpolator)
+                .setListener(l)
+                .start();
     }
 
     @SuppressWarnings("SameParameterValue")
@@ -149,51 +179,75 @@ public class FloatingActionMenu extends FrameLayout implements View.OnClickListe
         }
     }
 
-    @Override
-    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        int heightMode = MeasureSpec.getMode(heightMeasureSpec);
-        // Call super.onMeasure to measure children and width
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        if (heightMode == MeasureSpec.EXACTLY) {
+    private void showOverlay() {
+        if (mOverlay != null) {
+            if (mOverlay.getVisibility() != VISIBLE) {
+                mOverlay.setVisibility(View.VISIBLE);
+            }
             return;
         }
-        int h = mFabContainers[0].getMeasuredHeight();
-        setMeasuredDimension(getMeasuredWidth(), (h + mInterval) * mFabs.length + h);
-    }
-
-    public PublishSubject<Boolean> getState() {
-        return mState;
-    }
-
-    @Override
-    public void onClick(View v) {
-        // collapse();
-        if (mOnFloatingActionButtonClickListener != null) {
-            mOnFloatingActionButtonClickListener.onClick((FloatingActionButton) v, (int) v.getTag());
-        }
-    }
-
-    public void setOnFloatingActionButtonClickListener(OnFloatingActionButtonClickListener onFloatingActionButtonClickListener) {
-        mOnFloatingActionButtonClickListener = onFloatingActionButtonClickListener;
-    }
-
-    private void showOverlay() {
-        if (mOverlay != null && mOverlay.getVisibility() == VISIBLE) return;
-
         Context context = getContext();
-
         if (!(context instanceof Activity activity)) return;
-
         if (!(activity.findViewById(android.R.id.content) instanceof ViewGroup root)) return;
 
+        FloatingActionMenu thisMenu = this;
+
         mOverlay = new View(context) {
+            private final Rect menuRectOnScreen = new Rect();
+            private final Rect toggleFabRectOnScreen = new Rect();
+
+            @SuppressLint("ClickableViewAccessibility")
             @Override
             public boolean onTouchEvent(MotionEvent event) {
-                mShouldCheckExpanded = false;
-                collapse();
-                root.post(() -> root.removeView(this));
-                var replay = MotionEvent.obtain(event);
-                root.post(() -> activity.getWindow().getDecorView().dispatchTouchEvent(replay));
+                int[] locMenu = new int[2];
+                thisMenu.getLocationOnScreen(locMenu);
+                menuRectOnScreen.set(
+                        locMenu[0],
+                        locMenu[1],
+                        locMenu[0] + thisMenu.getWidth(),
+                        locMenu[1] + thisMenu.getHeight()
+                );
+
+                boolean hasToggleFab = (mToggleFab != null) && mToggleFab.isShown();
+                if (hasToggleFab) {
+                    toggleFabRectOnScreen.set(
+                            mToggleFabLoc[0],
+                            mToggleFabLoc[1],
+                            mToggleFabLoc[0] + mToggleFab.getWidth(),
+                            mToggleFabLoc[1] + mToggleFab.getHeight()
+                    );
+                } else {
+                    toggleFabRectOnScreen.setEmpty();
+                }
+
+                int rawX = (int) event.getRawX();
+                int rawY = (int) event.getRawY();
+
+                boolean inToggleFab = hasToggleFab && toggleFabRectOnScreen.contains(rawX, rawY);
+                if (inToggleFab) {
+                    MotionEvent forwarded = MotionEvent.obtain(event);
+                    forwarded.offsetLocation(-toggleFabRectOnScreen.left, -toggleFabRectOnScreen.top);
+                    mToggleFab.dispatchTouchEvent(forwarded);
+                    forwarded.recycle();
+                    return true;
+                }
+
+                boolean inMenu = menuRectOnScreen.contains(rawX, rawY);
+                if (inMenu) {
+                    MotionEvent forwarded = MotionEvent.obtain(event);
+                    forwarded.offsetLocation(-menuRectOnScreen.left, -menuRectOnScreen.top);
+                    thisMenu.dispatchTouchEvent(forwarded);
+                    forwarded.recycle();
+                    return true;
+                }
+
+                // Collapse for external touches, avoid breaking button click chains.
+                // zh-CN: 对外部触摸进行收起, 避免破坏按钮点击链路.
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    collapse();
+                }
+                // Do not consume external events, pass them to lower layers such as lists for continued processing.
+                // zh-CN: 不消耗外部事件, 交给下层列表等继续处理.
                 return false;
             }
         };
@@ -206,10 +260,11 @@ public class FloatingActionMenu extends FrameLayout implements View.OnClickListe
     }
 
     private void hideOverlay() {
-        if (mOverlay == null) return;
-        if (!(mOverlay.getParent() instanceof ViewGroup parent)) return;
-        parent.removeView(mOverlay);
-        mOverlay = null;
+        if (mOverlay != null) mOverlay.setVisibility(View.GONE);
+    }
+
+    public interface OnFloatingActionButtonClickListener {
+        void onClick(FloatingActionButton button, int pos);
     }
 
 }

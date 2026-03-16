@@ -73,7 +73,7 @@ open class RhinoJavaScriptEngine(private val mAndroidContext: android.content.Co
             return if (hasFeature(ScriptConfig.FEATURE_CONTINUATION)) {
                 context.executeScriptWithContinuations(script, mScriptable)
             } else {
-                script.exec(context, mScriptable)
+                script.exec(context, mScriptable, mScriptable)
             }
         } catch (e: IOException) {
             throw UncheckedIOException(e)
@@ -113,7 +113,7 @@ open class RhinoJavaScriptEngine(private val mAndroidContext: android.content.Co
             context.executeScriptWithContinuations(initScript, mScriptable)
         } catch (e: IllegalArgumentException) {
             if ("Script argument was not a script or was not created by interpreted mode " == e.message) {
-                initScript.exec(context, mScriptable)
+                initScript.exec(context, mScriptable, mScriptable)
             } else {
                 throw e
             }
@@ -156,7 +156,7 @@ open class RhinoJavaScriptEngine(private val mAndroidContext: android.content.Co
 
         override fun wrap(cx: Context, scope: Scriptable, obj: Any?, staticType: Class<*>?): Any? {
             return when {
-                obj is String -> runtime.bridges.toString(obj.toString())
+                obj is String -> runtime.bridges.toString(obj)
                 staticType == UiObjectCollection::class.java -> runtime.bridges.asArray(obj)
                 else -> super.wrap(cx, scope, obj, staticType)
             }

@@ -24,11 +24,15 @@ import android.net.Uri;
 import android.os.Binder;
 import android.provider.Settings;
 import android.util.Log;
+import org.autojs.autojs.util.IntentUtils;
+import org.autojs.autojs.util.RomUtils;
 
 import java.lang.reflect.Method;
 
 public class SettingsCompat {
+
     private static final String TAG = "ezy-settings-compat";
+    private final static String HUAWEI_PACKAGE = "com.huawei.systemmanager";
 
     public static boolean canDrawOverlays(Context context) {
         return Settings.canDrawOverlays(context);
@@ -38,41 +42,38 @@ public class SettingsCompat {
         return Settings.System.canWrite(context);
     }
 
-    public static void manageDrawOverlays(Context context) {
-        if (manageDrawOverlaysForRom(context)) {
-            return;
+    public static boolean manageDrawOverlays(Context context) {
+        if (RomUtils.INSTANCE.isEmui()) {
+            return manageDrawOverlaysStandard(context) || manageDrawOverlaysForMiui(context);
         }
+        if (RomUtils.INSTANCE.isEmui()) {
+            return manageDrawOverlaysForEmui(context) || manageDrawOverlaysStandard(context);
+        }
+        if (RomUtils.INSTANCE.isFlyme()) {
+            return manageDrawOverlaysForFlyme(context) || manageDrawOverlaysStandard(context);
+        }
+        if (RomUtils.INSTANCE.isOppo()) {
+            return manageDrawOverlaysForOppo(context) || manageDrawOverlaysStandard(context);
+        }
+        if (RomUtils.INSTANCE.isVivo()) {
+            return manageDrawOverlaysForVivo(context) || manageDrawOverlaysStandard(context);
+        }
+        if (RomUtil.isQiku()) {
+            return manageDrawOverlaysForQihu(context) || manageDrawOverlaysStandard(context);
+        }
+        return manageDrawOverlaysStandard(context);
+    }
+
+    private static boolean manageDrawOverlaysStandard(Context context) {
         Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
         intent.setData(Uri.parse("package:" + context.getPackageName()));
-        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        return startSafely(context, intent);
     }
 
     public static void manageWriteSettings(Context context) {
         Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
         intent.setData(Uri.parse("package:" + context.getPackageName()));
-        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-    }
-
-    private static boolean manageDrawOverlaysForRom(Context context) {
-        if (RomUtil.isMiui()) {
-            return manageDrawOverlaysForMiui(context);
-        }
-        if (RomUtil.isEmui()) {
-            return manageDrawOverlaysForEmui(context);
-        }
-        if (RomUtil.isFlyme()) {
-            return manageDrawOverlaysForFlyme(context);
-        }
-        if (RomUtil.isOppo()) {
-            return manageDrawOverlaysForOppo(context);
-        }
-        if (RomUtil.isVivo()) {
-            return manageDrawOverlaysForVivo(context);
-        }
-        if (RomUtil.isQiku()) {
-            return manageDrawOverlaysForQihu(context);
-        }
-        return false;
+        IntentUtils.startSafely(intent, context);
     }
 
     private static boolean checkOp(Context context, int op) {
@@ -88,8 +89,7 @@ public class SettingsCompat {
 
     private static boolean startSafely(Context context, Intent intent) {
         if (context.getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY).size() > 0) {
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(intent);
+            IntentUtils.startSafely(intent, context);
             return true;
         } else {
             Log.e(TAG, "Intent is not available! " + intent);
@@ -108,8 +108,6 @@ public class SettingsCompat {
         intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity");
         return startSafely(context, intent);
     }
-
-    private final static String HUAWEI_PACKAGE = "com.huawei.systemmanager";
 
     // 华为
     private static boolean manageDrawOverlaysForEmui(Context context) {
@@ -130,7 +128,7 @@ public class SettingsCompat {
 
     // VIVO
     private static boolean manageDrawOverlaysForVivo(Context context) {
-        // 不支持直接到达悬浮窗设置页，只能到 i管家 首页
+        // 不支持直接到达悬浮窗设置页, 只能到 i 管家 首页
         Intent intent = new Intent("com.iqoo.secure");
         intent.setClassName("com.iqoo.secure", "com.iqoo.secure.MainActivity");
         // com.iqoo.secure.ui.phoneoptimize.SoftwareManagerActivity

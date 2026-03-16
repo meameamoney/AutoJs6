@@ -13,12 +13,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.autojs.autojs.extension.MaterialDialogExtensions.makeTextCopyable
-import org.autojs.autojs.extension.MaterialDialogExtensions.setCopyableText
+import org.autojs.autojs.util.DialogUtils.showAdaptive
+import org.autojs.autojs.util.DialogUtils.makeTextCopyable
+import org.autojs.autojs.util.DialogUtils.setCopyableText
 import org.autojs.autojs.runtime.api.augment.colors.Colors
 import org.autojs.autojs.util.ColorUtils
 import org.autojs.autojs6.R
-import org.autojs.autojs6.databinding.ColorInfoDialogListItemBinding
+import org.autojs.autojs6.databinding.ColorInfoDialogItemsBinding
 
 object ColorInfoDialogManager {
 
@@ -35,10 +36,10 @@ object ColorInfoDialogManager {
                 .content(R.string.error_invalid_color)
                 .positiveText(R.string.dialog_button_dismiss)
                 .positiveColorRes(R.color.dialog_button_default)
-                .show()
+                .showAdaptive()
             return
         }
-        val binding = ColorInfoDialogListItemBinding.inflate(LayoutInflater.from(context))
+        val binding = ColorInfoDialogItemsBinding.inflate(LayoutInflater.from(context))
 
         val colorWithoutAlpha = color or -0x1000000
 
@@ -73,7 +74,7 @@ object ColorInfoDialogManager {
         }
     }
 
-    private fun restoreEssentialViews(binding: ColorInfoDialogListItemBinding) {
+    private fun restoreEssentialViews(binding: ColorInfoDialogItemsBinding) {
         listOf(
             binding.colorHexColon to binding.colorHexValue,
             binding.colorRgbColon to binding.colorRgbValue,
@@ -87,7 +88,7 @@ object ColorInfoDialogManager {
         }
     }
 
-    private fun updateGuidelines(binding: ColorInfoDialogListItemBinding) {
+    private fun updateGuidelines(binding: ColorInfoDialogItemsBinding) {
         val filteredBindings = listOf(
             binding.colorHexLabel to binding.colorHexGuideline,
             binding.colorRgbLabel to binding.colorRgbGuideline,

@@ -2,8 +2,8 @@ package org.autojs.autojs.runtime.api.augment.jsox
 
 import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.jsSpecies
-import org.autojs.autojs.extension.FlexibleArray
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsSpecies
+import org.autojs.autojs.rhino.ArgumentGuards
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.api.augment.Invokable
@@ -11,13 +11,13 @@ import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
 import org.autojs.autojs.util.RhinoUtils.UNDEFINED
 import org.autojs.autojs.util.RhinoUtils.coerceString
 import org.autojs.autojs.util.RhinoUtils.flatten
-import org.autojs.autojs.util.StringUtils
 import org.autojs.autojs.util.StringUtils.lowercaseFirstChar
+import org.autojs.autojs.util.StringUtils.uppercaseFirstChar
 import org.mozilla.javascript.Undefined
 
 class Jsox(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime), Invokable {
 
-    override val key = lowercaseFirstChar(javaClass.simpleName)
+    override val key = javaClass.simpleName.lowercaseFirstChar()
 
     override val selfAssignmentFunctions = listOf(
         ::extend.name,
@@ -26,7 +26,7 @@ class Jsox(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime
 
     override fun invoke(vararg args: Any?): Undefined = extendRhinoWithRuntime(scriptRuntime, *args)
 
-    companion object : FlexibleArray() {
+    companion object : ArgumentGuards() {
 
         private val presetModules = listOf("Mathx", "Numberx", "Arrayx")
 
@@ -73,7 +73,7 @@ class Jsox(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime
         fun extendAllRhinoWithRuntime(scriptRuntime: ScriptRuntime): Undefined = extendRhinoWithRuntime(scriptRuntime, presetModules)
 
         private fun normalizeModuleName(name: String): String {
-            return StringUtils.uppercaseFirstChar(if (!name.endsWith('x')) "${name}x" else name)
+            return "${name.removeSuffix("x")}x".uppercaseFirstChar()
         }
 
     }

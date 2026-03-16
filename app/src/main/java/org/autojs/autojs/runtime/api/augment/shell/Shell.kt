@@ -2,11 +2,15 @@ package org.autojs.autojs.runtime.api.augment.shell
 
 import android.util.Log
 import android.view.KeyEvent
-import androidx.annotation.IntRange
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.FlexibleArray
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component2
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component3
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component4
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component5
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.AbstractShell
 import org.autojs.autojs.runtime.api.augment.Augmentable
@@ -59,7 +63,7 @@ class Shell(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntim
 
     override fun invoke(vararg args: Any?): AbstractShell.Result = execCommand(scriptRuntime, args)
 
-    companion object : FlexibleArray() {
+    companion object : ArgumentGuards() {
 
         private val TAG = Shell::class.java.simpleName
 
@@ -133,16 +137,17 @@ class Shell(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntim
                 process.inputStream.bufferedReader().useLines { lines ->
                     val resumedActivityLine = lines.find {
                         it.contains("Resumed:") || it.contains("ResumedActivity")
-                    }
-                    resumedActivityLine?.let { line ->
-                        Log.d(TAG, "Found Resumed Activity: $line")
-                        line.split("\\s+".toRegex()).firstOrNull { part ->
-                            part.contains("/")
-                        }?.let { part ->
-                            Log.d(TAG, "current activity part: $part")
-                            return part.replace("\\W+$".toRegex(), "")
-                        }
-                    }
+                    } ?: return@useLines
+
+                    Log.d(TAG, "Found Resumed Activity: $resumedActivityLine")
+
+                    val activityPart = resumedActivityLine.split("\\s+".toRegex()).firstOrNull { part ->
+                        part.contains("/")
+                    } ?: return@useLines
+
+                    Log.d(TAG, "current activity part: $activityPart")
+
+                    return activityPart.replace("\\W+$".toRegex(), "")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error reading current component", e)
@@ -400,7 +405,7 @@ class Shell(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntim
 
         data class CommandArgumentsData(val arguments: String = "", val withRoot: Boolean = false, val withExit: Boolean = false)
 
-        data class CommandData(val command: String, @IntRange(0, 1) val withRoot: Int = 0)
+        data class CommandData(val command: String, val withRoot: Int = 0)
 
     }
 

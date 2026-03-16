@@ -1,9 +1,10 @@
 package org.autojs.autojs.runtime.api.augment.sysprops
 
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.ArrayExtensions.toNativeObject
-import org.autojs.autojs.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.MapExtensions.toNativeObject
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.api.augment.Invokable
@@ -12,7 +13,6 @@ import org.autojs.autojs.util.AndroidUtils.SystemProperties
 import org.autojs.autojs.util.RhinoUtils.coerceBoolean
 import org.autojs.autojs.util.RhinoUtils.coerceIntNumber
 import org.autojs.autojs.util.RhinoUtils.coerceString
-import org.autojs.autojs.util.StringUtils.convertRegex
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.regexp.NativeRegExp
 
@@ -28,7 +28,7 @@ class SysProps(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime), Invok
         ::getAll.name,
     )
 
-    companion object {
+    companion object : ArgumentGuards() {
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
@@ -85,7 +85,7 @@ class SysProps(scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime), Invok
 
         private fun matchFilter(input: String, filter: Any?) = when {
             filter.isJsNullish() -> true
-            filter is NativeRegExp -> Regex(convertRegex(filter.toString())).containsMatchIn(input)
+            filter is NativeRegExp -> filter.toString().toRegex().containsMatchIn(input)
             else -> input.contains(coerceString(filter))
         }
 

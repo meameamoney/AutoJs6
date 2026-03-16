@@ -12,11 +12,12 @@ import androidx.recyclerview.widget.RecyclerView.VERTICAL
 import androidx.recyclerview.widget.ThemeColorRecyclerView
 import org.autojs.autojs.core.image.ColorItems
 import org.autojs.autojs.core.pref.Pref
-import org.autojs.autojs.extension.ViewExtensions.setOnSubtitleViewClickListener
-import org.autojs.autojs.extension.ViewExtensions.setOnTitleViewClickListener
+import org.autojs.autojs.util.ViewUtils.setOnSubtitleViewClickListener
+import org.autojs.autojs.util.ViewUtils.setOnTitleViewClickListener
 import org.autojs.autojs.theme.ThemeChangeNotifier
 import org.autojs.autojs.theme.ThemeColorManager
 import org.autojs.autojs.util.ViewUtils
+import org.autojs.autojs.util.ViewUtils.excludePaddingClippableViewFromBottomNavigationBar
 import org.autojs.autojs.util.ViewUtils.setMenuIconsColorByColorLuminance
 import org.autojs.autojs6.R
 import org.autojs.autojs6.databinding.MtActivityColorLibrariesBinding
@@ -65,7 +66,7 @@ class ColorLibrariesActivity : ColorSelectBaseActivity() {
             it.layoutManager = LinearLayoutManager(this)
             it.adapter = libraryAdapter
             it.addItemDecoration(DividerItemDecoration(this, VERTICAL))
-            ViewUtils.excludePaddingClippableViewFromBottomNavigationBar(it)
+            it.excludePaddingClippableViewFromBottomNavigationBar()
         }
     }
 
@@ -125,22 +126,22 @@ class ColorLibrariesActivity : ColorSelectBaseActivity() {
             showColorPicker()
             true
         }
-        R.id.action_show_all_histories -> {
-            showColorHistories { selectedHistoryItem ->
+        R.id.action_show_all_history_entries -> {
+            showColorHistory { selectedHistoryItem ->
                 val identifier = selectedHistoryItem.colorLibraryIdentifier ?: run {
                     ViewUtils.showToast(this@ColorLibrariesActivity, R.string.error_failed_to_apply_current_color_history, true)
-                    return@showColorHistories
+                    return@showColorHistory
                 }
                 if (identifier == getString(R.string.color_library_identifier_palette)) {
                     onColorPickerConfirmed(selectedHistoryItem.colorInt)
-                    return@showColorHistories
+                    return@showColorHistory
                 }
                 presetColorLibraries.find { getString(it.identifierRes) == identifier }?.let { library ->
                     library.colors.firstOrNull { getColor(it.colorRes) == selectedHistoryItem.colorInt }?.let { item ->
                         savePrefsForLibraries(item)
                         savePrefsForLegacy(this, item)
 
-                        saveDatabaseForColorHistories(
+                        saveDatabaseForColorHistory(
                             applicationContext = applicationContext,
                             libraryId = item.libraryId,
                             itemId = item.itemId,

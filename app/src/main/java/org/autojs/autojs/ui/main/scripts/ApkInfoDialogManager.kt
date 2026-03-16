@@ -2,10 +2,12 @@ package org.autojs.autojs.ui.main.scripts
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.DialogInterface
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.PackageManager.GET_META_DATA
 import android.os.Build
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View.MeasureSpec.UNSPECIFIED
 import androidx.appcompat.content.res.AppCompatResources
@@ -23,24 +25,41 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import net.dongliu.apk.parser.ApkFile
-import org.autojs.autojs.extension.MaterialDialogExtensions.makeSettingsLaunchable
-import org.autojs.autojs.extension.MaterialDialogExtensions.makeTextCopyable
-import org.autojs.autojs.extension.MaterialDialogExtensions.setCopyableTextIfAbsent
+import org.autojs.autojs.util.DialogUtils.showAdaptive
+import org.autojs.autojs.util.DialogUtils.makeSettingsLaunchable
+import org.autojs.autojs.util.DialogUtils.makeTextCopyable
+import org.autojs.autojs.util.DialogUtils.setCopyableTextIfAbsent
 import org.autojs.autojs.external.fileprovider.AppFileProvider
 import org.autojs.autojs.pio.PFiles
 import org.autojs.autojs.runtime.api.AppUtils
 import org.autojs.autojs.util.IntentUtils
 import org.autojs.autojs.util.IntentUtils.ToastExceptionHolder
 import org.autojs.autojs6.R
-import org.autojs.autojs6.databinding.ApkFileInfoDialogListItemBinding
+import org.autojs.autojs6.databinding.ApkFileInfoDialogItemsBinding
 import java.io.File
 
 object ApkInfoDialogManager {
 
+    private const val TAG = "ApkInfoDialogManager"
+
+    @JvmStatic
+    @JvmOverloads
+    @SuppressLint("SetTextI18n")
+    fun showApkInfoDialog(
+        context: Context,
+        apkFile: File,
+        builderApplier: (MaterialDialog.Builder.() -> Unit)? = null,
+    ) = showApkInfoDialog(context, apkFile, builderApplier, null)
+
     @JvmStatic
     @SuppressLint("SetTextI18n")
-    fun showApkInfoDialog(context: Context, apkFile: File) {
-        val binding = ApkFileInfoDialogListItemBinding.inflate(LayoutInflater.from(context))
+    fun showApkInfoDialog(
+        context: Context,
+        apkFile: File,
+        builderApplier: (MaterialDialog.Builder.() -> Unit)?,
+        onDismissListener: DialogInterface.OnDismissListener?,
+    ) {
+        val binding = ApkFileInfoDialogItemsBinding.inflate(LayoutInflater.from(context))
 
         // Create an independent Scope for the Dialog, bind its lifecycle with the Dialog.
         // zh-CN: 针对 Dialog 独立创建一个 Scope, 生命周期与 Dialog 绑定.
@@ -70,15 +89,22 @@ object ApkInfoDialogManager {
             .negativeColorRes(R.color.dialog_button_default)
             .neutralColorRes(R.color.dialog_button_hint)
             .onNegative { materialDialog, _ -> materialDialog.dismiss() }
-            .show()
+            .also { builder -> builderApplier?.invoke(builder) }
+            .build()
             .apply {
                 makeTextCopyable { titleView }
-                setOnDismissListener { scope.cancel() }
+                setOnDismissListener {
+                    scope.cancel()
+                    onDismissListener?.onDismiss(this)
+                }
             }
+            .showAdaptive()
+
 
         scope.launch {
             val apkInfoDeferred = async(Dispatchers.IO) { getApkInfo(apkFile) }
             val packageInfoDeferred = async(Dispatchers.IO) { getPackageInfo(packageManager, apkFilePath) }
+            val sysBasicDeferred = async(Dispatchers.IO) { getBasicInfoFromPackageArchive(context, apkFilePath) }
 
             val firstPackageName: String? = select {
                 apkInfoDeferred.onAwait { it?.packageName }
@@ -112,8 +138,15 @@ object ApkInfoDialogManager {
 
             dialog.setCopyableTextIfAbsent(binding.packageNameValue, packageName)
             dialog.setCopyableTextIfAbsent(binding.deviceSdkValue, "${Build.VERSION.SDK_INT}")
-            dialog.setCopyableTextIfAbsent(binding.fileSizeValue, this) { PFiles.getHumanReadableSize(apkFile.length()) }
+            dialog.setCopyableTextIfAbsent(binding.fileSizeValue, this) { PFiles.formatSizeWithUnit(apkFile.length()) }
             dialog.setCopyableTextIfAbsent(binding.signatureSchemeValue, this) { getApkSignatureInfo(apkFile) }
+
+            withContext(Dispatchers.Main) {
+                val sys = sysBasicDeferred.await()
+                dialog.setCopyableTextIfAbsent(binding.labelNameValue, sys?.label)
+                dialog.setCopyableTextIfAbsent(binding.minSdkValue, sys?.minSdk?.toString())
+                dialog.setCopyableTextIfAbsent(binding.targetSdkValue, sys?.targetSdk?.toString())
+            }
 
             launch(Dispatchers.IO) {
                 val apkInfo = apkInfoDeferred.await()
@@ -169,7 +202,11 @@ object ApkInfoDialogManager {
 
     private fun getApkInfo(apkFile: File): ApkInfo? = runCatching {
         ApkFile(apkFile).use { parser ->
-            val meta = runCatching { parser.apkMeta }.getOrNull()
+            val meta = runCatching { parser.apkMeta }
+                .onFailure {
+                    Log.d(TAG, "Failed to parse apk meta: ${apkFile.absolutePath}", it)
+                }
+                .getOrNull()
             val label = meta?.label
             val packageName = meta?.packageName
             val minSdkVersion = meta?.minSdkVersion?.toIntOrNull()
@@ -184,7 +221,7 @@ object ApkInfoDialogManager {
         packageManager.getPackageArchiveInfo(apkFilePath, GET_META_DATA)
     }.getOrNull()
 
-    private fun restoreEssentialViews(binding: ApkFileInfoDialogListItemBinding, context: Context) {
+    private fun restoreEssentialViews(binding: ApkFileInfoDialogItemsBinding, context: Context) {
         listOf(
             Triple(binding.labelNameLabel, binding.labelNameColon, binding.labelNameValue) to R.string.text_label_name,
             Triple(binding.packageNameLabel, binding.packageNameColon, binding.packageNameValue) to R.string.apk_info_package_name,
@@ -203,7 +240,7 @@ object ApkInfoDialogManager {
         }
     }
 
-    private fun updateGuidelines(binding: ApkFileInfoDialogListItemBinding) {
+    private fun updateGuidelines(binding: ApkFileInfoDialogItemsBinding) {
         val filteredBindings = listOf(
             binding.labelNameLabel to binding.labelNameGuideline,
             binding.packageNameLabel to binding.packageNameGuideline,
@@ -254,6 +291,26 @@ object ApkInfoDialogManager {
             ).takeUnless { it.isEmpty() }?.joinToString(" + ")
         }
     }.getOrNull()
+
+    private fun getBasicInfoFromPackageArchive(context: Context, apkPath: String): SysBasicInfo? = runCatching {
+        val pm = context.packageManager
+        val pi = pm.getPackageArchiveInfo(apkPath, GET_META_DATA) ?: return@runCatching null
+        val ai = pi.applicationInfo?.apply {
+            sourceDir = apkPath
+            publicSourceDir = apkPath
+        }
+        SysBasicInfo(
+            label = ai?.loadLabel(pm)?.toString(),
+            minSdk = this.runCatching { ai?.minSdkVersion }.getOrNull()?.takeIf { it != 0 },
+            targetSdk = ai?.targetSdkVersion?.takeIf { it != 0 },
+        )
+    }.getOrNull()
+
+    private data class SysBasicInfo(
+        val label: String?,
+        val minSdk: Int?,
+        val targetSdk: Int?,
+    )
 
     private data class ApkInfo(
         val label: String?,

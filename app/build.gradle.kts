@@ -1,34 +1,46 @@
 @file:Suppress("SpellCheckingInspection")
 
-import com.android.build.gradle.internal.api.ApplicationVariantImpl
-import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import com.android.build.api.variant.FilterConfiguration
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.io.FileInputStream
-import java.io.FileNotFoundException
-import java.text.SimpleDateFormat
-import java.util.*
-import java.util.zip.CRC32
 import kotlin.text.RegexOption.IGNORE_CASE
+
+plugins {
+    id("org.autojs.build.utils")
+    id("org.autojs.build.versions")
+    id("org.autojs.build.signs")
+    id("org.autojs.build.jvm-convention")
+    id("com.android.application")
+    id("com.google.devtools.ksp")
+    id("idea")
+}
+
+idea {
+    module {
+        excludeDirs.addAll(
+            listOf(
+                file("$rootDir/app/src/main/java/com/stardust/"),
+                file("$rootDir/app/src/main/assets/modules/obsolete/"),
+                file("$rootDir/app/src/main/assets-app/js-beautify/"),
+            )
+        )
+    }
+}
 
 val globalApplicationId = "org.autojs.autojs6"
 
-val sign = Sign("$rootDir/sign.properties")
-val versions = Versions("$rootDir/version.properties")
-
-val dimention = "channel"
+val flavorDimension = "channel"
 val flavorNameApp = "app"
 val flavorNameInrt = "inrt"
 val buildTypeDebug = "debug"
 val buildTypeRelease = "release"
 val buildActionAssemble = "assemble"
-val templateName = "template"
 
-plugins {
-    id("com.android.application")
-    id("com.google.devtools.ksp")
-    id("org.jetbrains.kotlin.android") /* kotlin("android") */
-}
+val taskNames: List<String> = gradle.startParameter.taskNames
+val isAppAssembleTaskRequested = taskNames.any { it.contains(Regex("^(:?$flavorNameApp:)?$buildActionAssemble", IGNORE_CASE)) }
+val isInrtAssembleTaskRequested = taskNames.any { it.contains(Regex("^(:?$flavorNameApp:)?$buildActionAssemble$flavorNameInrt", IGNORE_CASE)) }
+val isInrtTaskRequested = taskNames.any { it.contains(flavorNameInrt, true) }
+
+utils.registerTemplateApkCopy(project)
 
 dependencies /* Unclassified */ {
     // Compose
@@ -37,70 +49,68 @@ dependencies /* Unclassified */ {
     // Kotlin reflect
     implementation(kotlin("reflect"))
 
+    // AndroidX Core
+    implementation(libs.core.ktx)
+
+    // AndroidX Activity
+    implementation(libs.activity.ktx)
+
     // LeakCanary
-    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
+    debugImplementation(libs.leakcanary)
 
     // Android supports
-    implementation("androidx.cardview:cardview:1.0.0")
-    implementation("androidx.multidex:multidex:2.0.1")
+    implementation(libs.cardview)
+    implementation(libs.multidex)
 
     // Material Components
-    implementation("com.google.android.material:material:1.12.0")
+    implementation(libs.material)
 
     // SwipeRefreshLayout
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation(libs.swiperefreshlayout)
 
     // ConstraintLayout
-    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
+    implementation(libs.constraintlayout)
 
     // FlexboxLayout
-    implementation("com.google.android.flexbox:flexbox:3.0.0")
+    implementation(libs.flexbox)
 
     // Common Markdown
-    implementation("com.github.atlassian:commonmark-java:commonmark-parent-0.9.0")
+    implementation(libs.commonmark)
 
     // Flexmark Java HTML to Markdown Extensible Converter
-    implementation("com.vladsch.flexmark:flexmark-html2md-converter:0.64.8")
+    implementation(libs.flexmark.html2md)
 
     // Licenses Dialog
-    implementation("de.psdev.licensesdialog:licensesdialog:2.2.0")
+    implementation(libs.licensesdialog)
 
     // Apache Commons
-    implementation("org.apache.commons:commons-lang3:3.16.0")
+    implementation(libs.commons.lang3)
 
     // Retrofit
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.11.0")
-    implementation("com.squareup.retrofit2:adapter-rxjava2:2.11.0")
-    implementation("com.jakewharton.retrofit:retrofit2-kotlin-coroutines-adapter:0.9.2")
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.retrofit.adapter.rxjava2)
+    implementation(libs.retrofit2.kotlin.coroutines.adapter)
 
     // Glide
-    implementation("com.github.bumptech.glide:glide:4.16.0")
-    ksp("com.github.bumptech.glide:ksp:4.16.0")
+    implementation(libs.glide)
+    ksp(libs.glide.ksp)
 
     // Joda Time
-    implementation("joda-time:joda-time:2.12.7")
-
-    // Flurry
-    implementation("com.flurry.android:analytics:14.4.0")
-
-    // Bugly
-    implementation(project(":libs:com.tencent.bugly.crashreport-4.0.4"))
+    implementation(libs.joda.time)
 
     // OkHttp
-    // implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.12")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(libs.okhttp)
 
     // Webkit
-    implementation("androidx.webkit:webkit:1.13.0")
+    implementation(libs.webkit)
 
     // Gson
-    implementation("com.google.code.gson:gson:2.11.0")
+    implementation(libs.gson)
 
     // Zip4j
-    implementation("net.lingala.zip4j:zip4j:2.11.5")
+    implementation(libs.zip4j)
 
-    // Log4j
     // FIXME by SuperMonster003 on Aug 14, 2024.
     //  ! Vulnerable dependency (5 vulnerabilities) for log4j (version 1):
     //  ! - CVE-2022-23307, Score: 8.8
@@ -121,45 +131,43 @@ dependencies /* Unclassified */ {
     //  ! - CVE-2019-17571, 评分: 9.8
     //  ! 但 log4j 第二版本要求安卓 API 级别不低于 26,
     //  ! 与最低 API 级别为 24 的当前项目无法兼容.
-    implementation("log4j:log4j:1.2.17")
+    // Log4j
+    implementation(libs.log4j)
 
     // Android Logging Log4j
-    implementation("de.mindpipe.android:android-logging-log4j:1.0.3")
+    implementation(libs.android.logging.log4j)
 
     // Preference
-    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation(libs.preference.ktx)
 
     // RootShell
     // implementation("com.github.Stericson:RootShell:1.6")
-    implementation(project(":libs:root-shell-1.6"))
+    implementation(project(":libs:root-shell-1_6"))
 
     // JDeferred
-    implementation("org.jdeferred:jdeferred-android-aar:1.2.6")
+    implementation(libs.jdeferred)
 
     // Rx
-    implementation("io.reactivex.rxjava2:rxjava:2.2.21")
-    implementation("io.reactivex.rxjava2:rxandroid:2.1.1@aar")
+    implementation(libs.rxjava)
+    implementation(libs.rxandroid)
 
     // Device Names
-    implementation("com.jaredrummler:android-device-names:2.1.1")
+    implementation(libs.android.device.names)
 
     // Version Compare
-    implementation("io.github.g00fy2:versioncompare:1.5.0")
+    implementation(libs.versioncompare)
 
     // Terminal Emulator
-    implementation(project(":libs:jackpal.androidterm.libtermexec-1.0"))
-    implementation(project(":libs:jackpal.androidterm.emulatorview-1.0.42"))
-    implementation(project(":libs:jackpal.androidterm-1.0.70"))
+    implementation(project(":libs:jackpal-androidterm-libtermexec-1_0"))
+    implementation(project(":libs:jackpal-androidterm-emulatorview-1_0_42"))
+    implementation(project(":libs:jackpal-androidterm-1_0_70"))
 
     // Dex
-    implementation(files("$rootDir/libs/com.android.dx-1.14.jar"))
-    implementation(files("$rootDir/libs/com.legacy.android.dx-1.7.0.jar"))
+    implementation(files("$rootDir/libs/com-android-dx-1_14.jar"))
+    implementation(files("$rootDir/libs/com-legacy-android-dx-1_7_0.jar"))
 
     // OpenCV
-    implementation(project(":libs:org.opencv-4.8.0"))
-
-    // PaddleOCR
-    implementation(project(":libs:paddleocr"))
+    implementation(project(":libs:org-opencv-4_8_0"))
 
     // RapidOCR
     implementation(project(":libs:rapidocr"))
@@ -168,7 +176,10 @@ dependencies /* Unclassified */ {
     implementation(project(":libs:imagequant"))
 
     // Android Job
-    implementation(project(":libs:android-job-simplified-1.4.3"))
+    implementation(project(":libs:android-job-simplified-1_4_3"))
+
+    // AndroidX Work Runtime
+    implementation(libs.work.runtime)
 
     // APK Parser
     // implementation("com.jaredrummler:apk-parser:1.0.2")
@@ -176,18 +187,18 @@ dependencies /* Unclassified */ {
     implementation(project(":modules:apk-parser"))
 
     // Prism4j
-    implementation(files("$rootDir/libs/prism4j-2.0.0.jar"))
-    implementation(files("$rootDir/libs/prism4j-bundler-2.0.0.jar"))
-    implementation(project(":libs:markwon-core-4.6.2"))
-    implementation(project(":libs:markwon-syntax-highlight-4.6.2"))
+    implementation(files("$rootDir/libs/prism4j-2_0_0.jar"))
+    implementation(files("$rootDir/libs/prism4j-bundler-2_0_0.jar"))
+    implementation(project(":libs:markwon-core-4_6_2"))
+    implementation(project(":libs:markwon-syntax-highlight-4_6_2"))
 
     // Rhino
-    implementation(files("$rootDir/libs/org.mozilla.rhino-1.8.1-SNAPSHOT.jar"))
+    implementation(files("$rootDir/libs/org-mozilla-rhino-2_0_0-SNAPSHOT.jar"))
 
     // Tasker Plugin
-    implementation(project(":libs:android-spackle-9.0.0"))
-    implementation(project(":libs:android-assertion-9.0.0"))
-    implementation(project(":libs:android-plugin-client-sdk-for-locale-9.0.0"))
+    implementation(project(":libs:android-spackle-9_0_0"))
+    implementation(project(":libs:android-assertion-9_0_0"))
+    implementation(project(":libs:android-plugin-client-sdk-for-locale-9_0_0"))
 
     // JavaMail for Android
     implementation(files("$rootDir/libs/javamail-android/activation.jar"))
@@ -195,30 +206,31 @@ dependencies /* Unclassified */ {
     implementation(files("$rootDir/libs/javamail-android/mail.jar"))
 
     // Shizuku
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
     // ARSCLib
-    implementation("io.github.reandroid:ARSCLib:1.3.1")
+    implementation(libs.arsclib)
 
     // Toaster
-    implementation("com.github.getActivity:Toaster:12.6")
-    implementation("com.github.getActivity:EasyWindow:10.3")
+    implementation(libs.toaster)
+    implementation(libs.easywindow)
 
     // Pinyin4j
-    implementation("com.belerweb:pinyin4j:2.5.1")
+    implementation(libs.pinyin4j)
 
     // Jieba Analysis (zh-CN: 结巴分词)
     // implementation("com.huaban:jieba-analysis:1.0.2")
     implementation(project(":modules:jieba-analysis"))
 
     // Tiny Sign
-    implementation(files("$rootDir/libs/tiny-sign-0.9.jar"))
+    implementation(files("$rootDir/libs/tiny-sign-0_9.jar"))
 
     // Room
-    implementation("androidx.room:room-runtime:2.7.1")
-    implementation("androidx.room:room-ktx:2.7.1")
-    ksp("androidx.room:room-compiler:2.7.1")
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+    implementation(libs.room.rxjava2)
+    ksp(libs.room.compiler)
 
     // ApkSig
     // implementation("com.android.tools.build:apksig:8.7.3")
@@ -226,21 +238,30 @@ dependencies /* Unclassified */ {
     // ApkSigner
     implementation(project(":modules:apk-signer"))
 
-    // Spongy Castle
-    implementation("com.madgag.spongycastle:prov:1.58.0.0")
+    // Prov
+    implementation(libs.prov)
 
     // MQTT
-    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.1.0")
-    implementation("org.eclipse.paho:org.eclipse.paho.android.service:1.1.1")
+    implementation(libs.paho.client.mqttv3)
+    implementation(libs.paho.android.service)
 
     // Jsoup
-    implementation("org.jsoup:jsoup:1.19.1")
+    implementation(libs.jsoup)
 
     // Material Date Time Picker
     implementation(project(":modules:material-date-time-picker"))
 
     // ICU4J
-    implementation("com.ibm.icu:icu4j:77.1")
+    implementation(libs.icu4j)
+
+    // R8
+    implementation(libs.r8)
+
+    // Plugin API: Paddle OCR API
+    implementation(project(":plugin-api:paddle-ocr-api"))
+
+    // Plugin API: Paddle OCR Engine
+    implementation(project(":plugin-api:paddle-ocr-engine"))
 }
 
 dependencies /* MIME */ {
@@ -252,26 +273,26 @@ dependencies /* MIME */ {
 
     // MIME Util
     // implementation("eu.medsea.mimeutil:mime-util:2.1.3")
-    implementation(files("$rootDir/libs/mime-util-2.1.3.jar"))
+    implementation(files("$rootDir/libs/mime-util-2_1_3.jar"))
 }
 
 dependencies /* Test */ {
-    testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.test.runner)
+    androidTestImplementation(libs.junit.jupiter)
 }
 
 dependencies /* Annotations */ {
     // Android Annotations
-    implementation("org.androidannotations:androidannotations-api:4.8.0")
-    implementation("androidx.annotation:annotation:1.9.1")
-    ksp("org.androidannotations:androidannotations:4.8.0")
+    implementation(libs.android.annotations.api)
+    implementation(libs.annotation)
+    ksp(libs.android.annotations)
 
     // JCIP Annotations
-    implementation("net.jcip:jcip-annotations:1.0")
+    implementation(libs.jcip.annotations)
 
     // EventBus
-    implementation("org.greenrobot:eventbus:3.3.1")
+    implementation(libs.eventbus)
 }
 
 dependencies /* AppCompat */ {
@@ -281,16 +302,15 @@ dependencies /* AppCompat */ {
     //  ! zh-CN:
     //  ! 查看 Appcompat 库的发行版本,
     //  ! 可访问 https://developer.android.com/jetpack/androidx/releases/appcompat.
-    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation(libs.appcompat)
 
     // AppCompat for legacy views (such as JsTextViewLegacy)
-    implementation(project(":libs:androidx.appcompat-1.0.2")) {
+    implementation(project(":libs:androidx-appcompat-1_0_2")) {
         setVersion("1.0.2")
     }
 }
 
 dependencies /* Material Dialogs */ {
-    // Material Dialogs
     // TODO by SuperMonster003 on Feb 5, 2022.
     //  ! Upgrade to 3.3.0 (more difficult than expected).
     //  ! zh-CN: 升级至 3.3.0 (实际难度超出预期较多).
@@ -304,67 +324,63 @@ dependencies /* Material Dialogs */ {
     //  #     implementation("com.afollestad.material-dialogs:core", cfg)
     //  #     implementation("com.afollestad.material-dialogs:commons", cfg)
     //  # }
+    // Material Dialogs
     implementation(project(":modules:material-dialogs"))
-    implementation("me.zhanghai.android.materialprogressbar:library:1.4.2")
+    implementation(libs.materialprogressbar)
 }
 
 dependencies /* Layout */ {
     // Expandable Layout
-    implementation("com.github.aakira:expandable-layout:1.6.0")
+    // implementation("com.github.aakira:expandable-layout:1.6.0")
+    // implementation(project(":libs:expandable-layout-1_6_0"))
+    implementation(project(":modules:expandable-layout"))
 
-    // Expandable RecyclerView
-    implementation("com.bignerdranch.android:expandablerecyclerview:3.0.0-RC1")
+    implementation(project(":modules:expandable-recyclerview"))
 
-    // Flexible Divider
-    implementation("com.yqritc:recyclerview-flexibledivider:1.4.0")
+    implementation(project(":modules:recyclerview-flexibledivider"))
 }
 
 dependencies /* View */ {
     // RoundedImageView
-    implementation("com.makeramen:roundedimageview:2.3.0")
+    implementation(libs.roundedimageview)
 
     // CircleImageView
-    implementation("de.hdodenhof:circleimageview:3.1.0")
+    implementation(libs.circleimageview)
 
     // Animated SVG
-    implementation("com.jaredrummler:animated-svg-view:1.0.6")
+    implementation(libs.animated.svg.view)
 }
 
 dependencies /* GitHub API */ {
-    implementation(files("$rootDir/libs/github-api-1.306.jar"))
+    // GitHub API
+    implementation(files("$rootDir/libs/github-api-1_306.jar"))
 
-    implementation("commons-io:commons-io") {
-        because("Compatibility for Android API Level < 26 (Android 8.0) [O]")
-        version {
-            strictly("2.8.0")
-            because("Exception on newer versions: 'NoClassDefFoundError: org.apache.commons.io.IOUtils'")
-        }
-    }
+    // @Hint by SuperMonster003 on Sep 25, 2025.
+    //  ! Strict version: "2.8.0".
+    //  ! Compatibility for Android API Level < 26 (Android 8.0) [O].
+    //  ! Exception on newer versions: 'NoClassDefFoundError: org.apache.commons.io.IObuildUtils'.
+    // Commons IO
+    implementation(libs.commons.io)
 
-    implementation("com.fasterxml.jackson.core:jackson-databind") {
-        because("Compatibility for Android API Level < 26 (Android 8.0) [O]")
-        version {
-            strictly("2.13.4.2")
-            because("Exception on 2.14.x: 'No virtual method getParameterCount()I in class Ljava/lang/reflect/Method'")
-        }
-    }
+    // Jackson Databind
+    implementation(libs.jackson.databind)
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") {
-        because("Compatibility of java.time.* for Android API Level < 26 (Android 8.0) [O]")
-    }
+    // Desugar
+    coreLibraryDesugaring(libs.desugar)
 }
 
 dependencies /* MLKit */ {
     // OCR
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation(libs.text.recognition.chinese)
 
     // Barcode
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation(libs.barcode.scanning)
 }
 
 dependencies /* OpenCC */ {
     // OpenCC
-    implementation("com.github.qichuan:android-opencc:1.2.0")
+    // implementation("com.github.qichuan:android-opencc:1.2.0")
+    implementation(libs.opencc)
 }
 
 dependencies /* Auto.js Extensions */ {
@@ -382,19 +398,23 @@ dependencies /* Auto.js Extensions */ {
 
     // Auto.js APK Builder
     // @Integrated by SuperMonster003 on Mar 30, 2023.
-    //  # implementation(project(":libs:Auto.js-ApkBuilder-1.0.3"))
+    //  # implementation(project(":libs:Autojs-ApkBuilder-1_0_3"))
 
     // Extracted from com.github.hyb1996:MutableTheme:1.0.0
-    implementation("androidx.recyclerview:recyclerview:1.4.0")
-    implementation("com.github.ozodrukh:CircularReveal:2.0.1")
+    implementation(libs.recyclerview)
+    implementation(libs.circularreveal)
     // @Legacy com.jrummyapps:colorpicker:2.1.7
     // @Integrated by SuperMonster003 on Mar 25, 2025.
     //  # implementation("com.jaredrummler:colorpicker:1.1.0")
     implementation(project(":modules:color-picker"))
 }
 
+dependencies /* Build Logic */ {
+    // Version Codes Generator
+    ksp(libs.ksp.version.codes.processor)
+}
+
 dependencies /* Archived */ {
-    // Kotlin
     // @Comment by SuperMonster003 on May 19, 2022.
     //  ! It is no longer necessary to declare a dependency on the stdlib library in any Kotlin Gradle project.
     //  ! The dependency is added by default.
@@ -403,19 +423,31 @@ dependencies /* Archived */ {
     //  ! 已无需在 Kotlin Gradle 项目中显式声明标准库 (stdlib).
     //  ! 相关依赖已默认被添加.
     //  ! 参阅 https://kotlinlang.org/docs/gradle.html#dependency-on-the-standard-library.
+    // Kotlin
     // implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.6.21")
 
-    // Google Guava
     // @Comment by SuperMonster003 on Jun 1, 2022.
     //  ! Not necessary for current project but worth keeping the trace.
     //  ! zh-CN: 于当前项目已不再需要, 但依然值得留存其踪迹 (以备不时之需).
+    // Google Guava
     // implementation("com.google.guava:guava:31.1-jre")
 
-    // Javax WS RS API (Java API for RESTful Web Services)
     // @Comment by SuperMonster003 on Apr 9, 2024.
     //  ! It was ever imported and used for MediaType constants.
     //  ! zh-CN: 曾用于 MediaType 常量的导入及使用.
+    // Javax WS RS API (Java API for RESTful Web Services)
     // implementation("javax.ws.rs:javax.ws.rs-api:2.1.1")
+
+    // @Hint by SuperMonster003 on Jan 11, 2026.
+    //  ! The AutoJs6 core project has deprecated the Local Broadcast Manager library,
+    //  ! replaced by LiveData and SharedFlow.
+    //  ! It is only retained for dependencies of certain libraries (such as MQTT).
+    //  ! zh-CN:
+    //  ! AutoJs6 核心项目已弃用 Local Broadcast Manager 库,
+    //  ! 由 LiveData 及 SharedFlow 替代.
+    //  ! 仅用于某些库 (如 MQTT) 的依赖而保留.
+    // Local Broadcast Manager
+    implementation(libs.localbroadcastmanager)
 }
 
 dependencies /* Reserved for auto append by IDE */ {
@@ -440,7 +472,7 @@ android {
 
         multiDexEnabled = true
 
-        buildConfigField("String", "VERSION_DATE", "\"${Utils.getDateString("MMM d, yyyy", "GMT+08:00")}\"")
+        buildConfigField("String", "VERSION_DATE", "\"${utils.getDateString("MMM d, yyyy", "GMT+08:00")}\"")
         buildConfigField("String", "VSCODE_EXT_REQUIRED_VERSION", "\"${versions.vscodeExtRequiredVersion}\"")
         buildConfigField("boolean", "is${flavorNameInrt.uppercaseFirstChar()}", "false")
 
@@ -454,12 +486,12 @@ android {
         }
     }
 
-    flavorDimensions.add(dimention)
+    flavorDimensions.add(flavorDimension)
 
     productFlavors {
 
         create(flavorNameApp) {
-            dimension = dimention
+            dimension = flavorDimension
             versionCode = versions.appVersionCode
             versionName = versions.appVersionName
             buildConfigField("String", "CHANNEL", "\"$flavorNameApp\"")
@@ -471,13 +503,13 @@ android {
                     "intentCategory" to "android.intent.category.LAUNCHER",
                     "intentCategoryInrt" to "android.intent.category.DEFAULT",
                     "authorities" to "org.autojs.autojs6.fileprovider",
-                    "icon" to "@drawable/autojs6_material",
+                    "icon" to "@mipmap/ic_app_launcher_adaptive",
                 )
             )
         }
 
         create(flavorNameInrt) {
-            dimension = dimention
+            dimension = flavorDimension
             applicationIdSuffix = ".$flavorNameInrt"
             minSdk = versions.sdkVersionMin
             targetSdk = versions.sdkVersionTargetInrt
@@ -503,54 +535,13 @@ android {
             //  ! https://github.com/kkevsekk1/AutoX/blob/a6d482189291b460c3be60970b74c5321d26e457/inrt/build.gradle.kts#L93
             // noinspection ChromeOsAbiSupport
             ndk.abiFilters += ""
-
-            gradle.taskGraph.whenReady(object : Action<TaskExecutionGraph> {
-                override fun execute(taskGraph: TaskExecutionGraph) {
-                    val taskName = "$buildActionAssemble${flavorNameInrt.uppercaseFirstChar()}${buildTypeRelease.uppercaseFirstChar()}"
-                    project.getTasksByName(taskName, true)
-                        .firstOrNull()
-                        ?.doLast {
-                            copy {
-                                val src = "build/outputs/apk/$flavorNameInrt/$buildTypeRelease"
-
-                                // @Reference to LZX284 (https://github.com/LZX284) by SuperMonster003 on Nov 16, 2023.
-                                val dst = "src/main/assets-$flavorNameApp"
-
-                                val ext = Utils.FILE_EXTENSION_APK
-
-                                if (!file(src).isDirectory) {
-                                    return@copy
-                                }
-
-                                from(src); into(dst)
-
-                                val verName = versionName?.replace(Regex("\\s"), "-")?.lowercase()
-
-                                /* e.g. inrt-v6.4.0-beta-universal.apk */
-                                val srcFileName = "$flavorNameInrt-v$verName-universal.$ext".also {
-                                    if (!file(File(src, it)).exists()) {
-                                        throw GradleException("Source file \"${file(File(src, it))}\" doesn't exist")
-                                    }
-                                }
-
-                                val dstFileName = "$templateName.$ext"
-                                val isOverridden = file(File(dst, dstFileName)).exists()
-                                include(srcFileName)
-                                rename(srcFileName, dstFileName)
-                                println("Source: ${file(File(src, srcFileName))}")
-                                println("Destination: ${file(File(dst, dstFileName))}${if (isOverridden) " [overridden]" else ""}")
-                            }
-                        }
-                        ?: println("$taskName doesn't exist in project ${project.name}")
-                }
-            })
         }
 
         androidResources {
-            if (gradle.startParameter.taskNames.any { it.contains(Regex("^(:?$flavorNameApp:)?$buildActionAssemble")) }) {
+            if (isAppAssembleTaskRequested) {
                 ignoreAssetsPatterns.addAll(listOf(".idea", "declarations", "sample/declarations"))
             }
-            if (gradle.startParameter.taskNames.any { it.contains(Regex("^(:?$flavorNameApp:)?$buildActionAssemble$flavorNameInrt", IGNORE_CASE)) }) {
+            if (isInrtAssembleTaskRequested) {
                 // @Hint by SuperMonster003 on Oct 16, 2023.
                 //  ! Runtime assets will be copied from flavor "app"
                 //  ! while building an apk on org.autojs.autojs.ui.project.BuildActivity.
@@ -576,36 +567,46 @@ android {
         //  ! The assets division idea was accepted, and it wouldn't hurt to try. :)
         //  ! zh-CN: 资产隔离的想法可以被接受, 毕竟试一下也无妨. [笑脸符号]
 
+        // @Archived by JetBrains AI Assistant (GPT-5.3-Codex (xhigh)) on Mar 7, 2026.
+        //  # getByName("main") {
+        //  #     assets.srcDirs("src/main/assets")
+        //  # }
+        //  # getByName("release") {
+        //  #     java.srcDirs("src/release/java")
+        //  # }
+        //  # getByName("debug") {
+        //  #     java.srcDirs("src/debug/java")
+        //  # }
+        //  # getByName(flavorNameApp) {
+        //  #     assets.srcDirs("src/main/assets-$flavorNameApp")
+        //  # }
+        //  # getByName(flavorNameInrt) {
+        //  #     assets.srcDirs("src/main/assets-$flavorNameInrt")
+        //  # }
+        //  !
         getByName("main") {
-            assets.srcDirs("src/main/assets")
+            assets.directories.add("src/main/assets")
         }
         getByName("release") {
-            java.srcDirs("src/release/java")
+            java.directories.add("src/release/java")
         }
         getByName("debug") {
-            java.srcDirs("src/debug/java")
+            java.directories.add("src/debug/java")
         }
         getByName(flavorNameApp) {
-            assets.srcDirs("src/main/assets-$flavorNameApp")
+            assets.directories.add("src/main/assets-$flavorNameApp")
         }
         getByName(flavorNameInrt) {
-            assets.srcDirs("src/main/assets-$flavorNameInrt")
+            assets.directories.add("src/main/assets-$flavorNameInrt")
         }
 
     }
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = versions.javaVersion
-        targetCompatibility = versions.javaVersion
     }
 
-    // @Hint by SuperMonster003 on Sep 25, 2024.
-    //  ! To maintain compatibility with lower versions of Gradle (such as 7.4.2).
-    //  ! zh-CN: 为了兼容低版本 Gradle (如 7.4.2).
-    //  # packaging { ... }
-    @Suppress("DEPRECATION")
-    packagingOptions {
+    packaging {
         listOf(
             "META-INF/DEPENDENCIES",
             "META-INF/LICENSE",
@@ -633,7 +634,7 @@ android {
             "EmojiReference.txt",
         ).let { resources.excludes.addAll(it) }
 
-        if (gradle.startParameter.taskNames.any { it.contains(flavorNameInrt, true) }) {
+        if (isInrtTaskRequested) {
             listOf(
                 "**/prob_emit.txt", // Jieba Analysis (zh-CN: 结巴分词)
                 "**/dict-chinese-*.db.gzip", // Jieba Analysis (zh-CN: 结巴分词)
@@ -648,32 +649,29 @@ android {
         }
     }
 
-    kotlinOptions {
-        jvmTarget = versions.javaVersion.toString()
-        // freeCompilerArgs = listOf("-Xjvm-default=all-compatibility")
-    }
-
     lint {
         abortOnError = false
     }
 
     signingConfigs {
-        if (sign.isValid) {
+        if (signs.isValid) {
             create(buildTypeRelease) {
-                storeFile = sign.properties["storeFile"]?.let { file(it as String) }
-                keyPassword = sign.properties["keyPassword"] as String
-                keyAlias = sign.properties["keyAlias"] as String
-                storePassword = sign.properties["storePassword"] as String
+                storeFile = signs.properties["storeFile"]?.let { file(it as String) }
+                keyPassword = signs.properties["keyPassword"] as String
+                keyAlias = signs.properties["keyAlias"] as String
+                storePassword = signs.properties["storePassword"] as String
             }
         }
     }
 
     buildTypes {
         val proguardFiles = arrayOf<Any>(
-            getDefaultProguardFile("proguard-android.txt"),
+            // @Archived by JetBrains AI Assistant (GPT-5.3-Codex (xhigh)) on Mar 7, 2026.
+            //  # getDefaultProguardFile("proguard-android.txt"),
+            getDefaultProguardFile("proguard-android-optimize.txt"),
             "proguard-rules.pro",
         )
-        val niceSigningConfig = takeIf { sign.isValid }?.let {
+        val niceSigningConfig = takeIf { signs.isValid }?.let {
             signingConfigs.getByName(buildTypeRelease)
         }
         debug {
@@ -691,10 +689,12 @@ android {
     buildFeatures {
         aidl = true
         viewBinding = true
+
         // @Hint by SuperMonster003 on Aug 14, 2023.
         //  ! Substitution of "android.defaults.buildfeatures.buildconfig=true"
         //  ! zh-CN: "android.defaults.buildfeatures.buildconfig=true" 的替代方案
         buildConfig = true
+
         // @Archived by SuperMonster003 on Sep 23, 2024.
         //  ! Jetpack Compose
         //  # compose = true
@@ -703,46 +703,12 @@ android {
         //  # }
     }
 
-    applicationVariants.all {
-        mergeAssetsProvider.configure {
-            doLast {
-                mapOf(
-                    "dir" to outputDir,
-                    "includes" to when (variantName.startsWith(flavorNameInrt)) {
-                        true -> listOf(
-                            "mlkit-google-ocr-models/**/*",
-                            "mlkit_barcode_models/**/*",
-                            "models/**/*",
-                            "modules/obsolete/**/*",
-                            "openccdata/**/*",
-                            "project/**/*",
-                            "android-devices.db",
-                            "autojs.keystore",
-                            "**/prob_emit.txt", // Jieba Analysis (zh-CN: 结巴分词)
-                            "**/dict-chinese-*.db.gzip", // Jieba Analysis (zh-CN: 结巴分词)
-                        )
-                        else -> listOf(
-                            "declarations/**/*",
-                            "sample/declarations/**/*",
-                            "modules/obsolete/**/*",
-                        )
-                    },
-                ).let { delete(fileTree(it)) }
-            }
-        }
-
-        outputs.map { it as BaseVariantOutputImpl }.forEach {
-            it.outputFileName = Utils.getOutputFileName(this@all as ApplicationVariantImpl, it)
-        }
-    }
 
     splits {
         // Configures multiple APKs based on ABI.
         abi {
             // Enables building multiple APKs per ABI.
-            isEnable = /* isNotAssembleInrt */ gradle.startParameter.taskNames.none {
-                it.contains(Regex("^(:?$flavorNameApp:)?$buildActionAssemble$flavorNameInrt", IGNORE_CASE))
-            }
+            isEnable = !isInrtAssembleTaskRequested
             // By default, all ABIs are included, so use reset() and include to specify that we only
             // want APKs for x86 and x86_64.
             // Resets the list of ABIs that Gradle should create APKs for to none.
@@ -756,6 +722,74 @@ android {
 
 }
 
+androidComponents {
+    onVariants { variant ->
+        val variantName = variant.name
+        val mergeAssetsTaskName = "merge${variantName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}Assets"
+        val isInrtVariant = variantName.startsWith(flavorNameInrt, ignoreCase = true)
+
+        tasks.matching { it.name == mergeAssetsTaskName }.configureEach {
+            doLast {
+                val outputDir = when (val dir = javaClass.methods.firstOrNull {
+                    it.name == "getOutputDir" && it.parameterTypes.isEmpty()
+                }?.invoke(this)) {
+                    is File -> dir
+                    is Directory -> dir.asFile
+                    else -> null
+                } ?: return@doLast
+
+                val includes = when (isInrtVariant) {
+                    true -> listOf(
+                        "mlkit-google-ocr-models/**/*",
+                        "mlkit_barcode_models/**/*",
+                        "models/**/*",
+                        "modules/obsolete/**/*",
+                        "openccdata/**/*",
+                        "project/**/*",
+                        "android-devices.db",
+                        "autojs.keystore",
+                        "**/prob_emit.txt", // Jieba Analysis
+                        "**/dict-chinese-*.db.gzip", // Jieba Analysis
+                    )
+                    else -> listOf(
+                        "declarations/**/*",
+                        "sample/declarations/**/*",
+                        "modules/obsolete/**/*",
+                    )
+                }
+
+                delete(
+                    fileTree(
+                        mapOf(
+                            "dir" to outputDir,
+                            "includes" to includes,
+                        )
+                    )
+                )
+            }
+        }
+
+        variant.outputs.forEach { output ->
+            val architecture = output.filters.find {
+                it.filterType == FilterConfiguration.FilterType.ABI
+            }?.identifier ?: "universal"
+            val outputFileNameProperty = output.javaClass.methods.firstOrNull {
+                it.name == "getOutputFileName" && it.parameterTypes.isEmpty()
+            }?.invoke(output) as? Property<*>
+
+            @Suppress("UNCHECKED_CAST")
+            (outputFileNameProperty as? Property<String>)?.set(
+                variant.applicationId.zip(output.versionName) { appId, versionName ->
+                    val autojs = appId.substringAfterLast('.')
+                    val version = versionName.replace("\\s".toRegex(), "-")
+                    val extension = utils.FILE_EXTENSION_APK
+                    "$autojs-v$version-$architecture.$extension".lowercase()
+                }
+            )
+        }
+    }
+}
+
 tasks {
     withType(JavaCompile::class.java) {
         options.encoding = "UTF-8"
@@ -766,17 +800,11 @@ tasks {
         // options.compilerArgs.addAll(listOf("-Xlint:deprecation", "-Xlint:unchecked"))
     }
 
-    withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        // @Archived by SuperMonster003 on Aug 14, 2024.
-        //  # kotlinOptions { jvmTarget = versions.javaVersion.toString() }
-        compilerOptions { jvmTarget.set(JvmTarget.valueOf("JVM_${versions.javaVersion}")) }
-    }
-
     register<Copy>("appendDigestToReleasedFiles") {
         listOf(flavorNameApp, flavorNameInrt).forEach { flavorName ->
             val src = "$flavorName/$buildTypeRelease"
             val dst = "${src}s"
-            val ext = Utils.FILE_EXTENSION_APK
+            val ext = utils.FILE_EXTENSION_APK
 
             if (!file(src).isDirectory) {
                 return@forEach
@@ -785,8 +813,8 @@ tasks {
             from(src); into(dst); include("*.$ext")
 
             rename { name ->
-                Utils.digestCRC32(file("${src}/$name")).let { digest ->
-                    name.replace("^(.+?)(\\.$ext)\$".toRegex(), "\$1-$digest\$2")
+                utils.digestCRC32(file("${src}/$name")).let { digest ->
+                    name.replace(Regex("^(.+?)(\\.$ext)$"), "$1-$digest$2")
                 }
             }
 
@@ -797,232 +825,4 @@ tasks {
 
 extra {
     versions.handleIfNeeded(project, flavorNameApp, listOf(buildTypeDebug, buildTypeRelease))
-}
-
-gradle.beforeProject {
-    extensions.extraProperties["compileSdk"] = versions.sdkVersionCompile
-    extensions.extraProperties["minSdk"] = versions.sdkVersionMin
-    extensions.extraProperties["targetSdk"] = versions.sdkVersionTarget
-}
-
-class Sign(filePath: String) {
-
-    var isValid = false
-        private set
-
-    val properties = Properties().also { props ->
-        File(filePath).takeIf { it.exists() }?.let {
-            props.load(FileInputStream(it))
-            isValid = props.isNotEmpty()
-        }
-    }
-
-}
-
-class Versions(filePath: String) {
-
-    private val properties = Properties()
-    private val file = File(filePath).apply {
-        if (!canRead()) {
-            throw FileNotFoundException("Cannot read file '$filePath'")
-        }
-        properties.load(FileInputStream(this))
-    }
-
-    val sdkVersionMin = properties["MIN_SDK_VERSION"].let { it as String }.toInt()
-    val sdkVersionTarget = properties["TARGET_SDK_VERSION"].let { it as String }.toInt()
-    val sdkVersionTargetInrt = properties["TARGET_SDK_VERSION_INRT"].let { it as String }.toInt()
-    val sdkVersionCompile = properties["COMPILE_SDK_VERSION"].let { it as String }.toInt()
-    val appVersionName = properties["VERSION_NAME"] as String
-    val appVersionCode = properties["VERSION_BUILD"].let { it as String }.toInt()
-    val vscodeExtRequiredVersion = properties["VSCODE_EXT_REQUIRED_VERSION"] as String
-
-    private val currentVersionInt = JavaVersion.current().majorVersion.toInt()
-
-    private val javaVersionMinSupported: Int = properties["JAVA_VERSION_MIN_SUPPORTED"]
-        .let { it as String }.toInt()
-        .also {
-            if (currentVersionInt < it) {
-                throw GradleException(
-                    "Current Gradle JDK version ${JavaVersion.current()} does not meet " +
-                            "the minimum requirement which $it is needed."
-                )
-            }
-        }
-    private val javaVersionMinSuggested: Int = properties["JAVA_VERSION_MIN_SUGGESTED"].let { it as String }.toInt()
-    private val javaVersionMinRadical: Int = properties["JAVA_VERSION_MIN_RADICAL"].let { it as String }.toInt()
-    private val javaVersionRaw = properties["JAVA_VERSION"] as String
-    private var javaVersionInfoSuffix = ""
-
-    val javaVersion: JavaVersion by lazy {
-        var javaVersionInt = determineJavaVersion()
-        gradle.beforeProject {
-            extensions.extraProperties["javaVersion"] = javaVersionInt
-        }
-        JavaVersion.toVersion(javaVersionInt)
-    }
-
-    private fun determineJavaVersion(): Int {
-        if (gradle.extra.has("javaVersionOverriddenByUser")) {
-            (gradle.extra.get("javaVersionOverriddenByUser") as? Int)?.let {
-                javaVersionInfoSuffix += " [user-specified]"
-                return it
-            }
-        }
-
-        var versionInt = javaVersionRaw.toInt()
-        var isJvmCoercive = false
-
-        while (versionInt > javaVersionMinSupported) {
-            if (JvmTarget.values().any { it.name.contains(Regex("_$versionInt$")) }) {
-                break
-            }
-            versionInt -= 1
-            isJvmCoercive = true
-        }
-
-        if (isJvmCoercive) {
-            javaVersionInfoSuffix += " [coercive-jvm-downgraded]"
-        }
-
-        if (versionInt > currentVersionInt) {
-            versionInt = currentVersionInt
-            javaVersionInfoSuffix += " [consistent-downgraded]"
-        }
-
-        if (gradle.extra.has("javaVersionCoercedByGradle")) {
-            (gradle.extra["javaVersionCoercedByGradle"] as? Int)?.let {
-                if (versionInt > it) {
-                    versionInt = it
-                    javaVersionInfoSuffix += " [coercive-gradle-downgraded]"
-                }
-            }
-        }
-        return versionInt
-    }
-
-    private var isBuildNumberAutoIncremented = false
-    private val minBuildTimeGap = Utils.hours2Millis(0.75)
-
-    private val isBuildGapEnough
-        get() = properties["BUILD_TIME"]?.let {
-            Date().time - (it as String).toLong() > minBuildTimeGap
-        } == true
-
-    init {
-        if (currentVersionInt < javaVersionMinSuggested) {
-            logger.error(
-                "It is recommended to upgrade current Gradle JDK version ${JavaVersion.current()} to $javaVersionMinSuggested or higher${
-                    if (javaVersionMinRadical > 0) " (but lower than $javaVersionMinRadical)" else ""
-                }."
-            )
-        }
-        if (javaVersionMinRadical in 1..currentVersionInt) {
-            logger.error(
-                "It is recommended to downgrade current Gradle JDK version $currentVersionInt " +
-                        "to ${javaVersionMinRadical - 1}${if (javaVersionMinRadical - 1 > javaVersionMinSuggested) " or lower (but not lower than $javaVersionMinSuggested)" else ""}, " +
-                        "as Gradle may be not compatible with JDK $javaVersionMinRadical${if (currentVersionInt > javaVersionMinRadical) " (and above)" else ""} for now."
-            )
-        }
-    }
-
-    fun showInfo() {
-        val title = "Version information for AutoJs6 app library"
-
-        val infoVerName = "Version name: $appVersionName"
-        val infoVerCode = "Version code: ${if (isBuildNumberAutoIncremented) "${appVersionCode + 1} [auto-incremented]" else appVersionCode}"
-        val infoVerSdk = "SDK versions: min [$sdkVersionMin] / target [$sdkVersionTarget] / compile [$sdkVersionCompile]"
-        val infoVerJava = "Java version: $javaVersion$javaVersionInfoSuffix"
-
-        val maxLength = arrayOf(title, infoVerName, infoVerCode, infoVerSdk, infoVerJava).maxOf { it.length }
-
-        arrayOf(
-            "=".repeat(maxLength),
-            title,
-            "-".repeat(maxLength),
-            infoVerName,
-            infoVerCode,
-            infoVerSdk,
-            infoVerJava,
-            "=".repeat(maxLength),
-            "",
-        ).forEach { println(it) }
-    }
-
-    fun handleIfNeeded(project: Project, flavorName: String, targetBuildType: List<String>) {
-        project.gradle.taskGraph.whenReady(object : Action<TaskExecutionGraph> {
-            override fun execute(taskGraph: TaskExecutionGraph) {
-                for (buildType in targetBuildType) {
-                    if (taskGraph.hasTask(Utils.getAssembleFullTaskName(project.name, flavorName, buildType))) {
-                        return appendToTask(project, flavorName, buildType)
-                    }
-                }
-                return showInfo()
-            }
-        })
-    }
-
-    private fun appendToTask(project: Project, flavorName: String, buildType: String) {
-        project.tasks.getByName(Utils.getAssembleTaskName(flavorName, buildType)).doLast {
-            updateProperties()
-            println()
-            showInfo()
-        }
-    }
-
-    private fun updateProperties() {
-        if (isBuildGapEnough) {
-            val isBuildAppRelease = gradle.startParameter.taskNames.any {
-                it.contains(Regex("^(:?$flavorNameApp:)?$buildActionAssemble($flavorNameApp|$flavorNameInrt)$buildTypeRelease", IGNORE_CASE))
-            }
-            if (!isBuildAppRelease) {
-                properties["VERSION_BUILD"] = "${appVersionCode + 1}"
-                isBuildNumberAutoIncremented = true
-            }
-        }
-        properties["BUILD_TIME"] = "${Date().time}"
-        properties.store(file.writer(), null)
-    }
-
-}
-
-object Utils {
-
-    const val FILE_EXTENSION_APK = "apk"
-
-    fun hours2Millis(hour: Double) = hour * 3.6e6
-
-    fun getDateString(format: String, zone: String): String {
-        // e.g. May 23, 2011
-        return SimpleDateFormat(format).apply { timeZone = TimeZone.getTimeZone(zone) }.format(Date())
-    }
-
-    fun getOutputFileName(variant: ApplicationVariantImpl, output: BaseVariantOutputImpl): String {
-        val autojs = variant.applicationId.replace("^.+\\.(.+)$".toRegex(), "$1") // e.g. autojs6
-        val version = variant.versionName.replace("\\s".toRegex(), "-") // e.g. 6.1.0
-        val architecture = output.getFilter("ABI") ?: "universal"
-        val extension = FILE_EXTENSION_APK
-
-        return "$autojs-v$version-$architecture.$extension".lowercase(Locale.getDefault())
-    }
-
-    fun getAssembleTaskName(flavorName: String, buildType: String) = "assemble${capitalize(flavorName)}${capitalize(buildType)}"
-
-    fun getAssembleFullTaskName(projectName: String, flavorName: String, buildType: String) = ":$projectName:${getAssembleTaskName(flavorName, buildType)}"
-
-    fun digestCRC32(file: File): String {
-        val fis = FileInputStream(file)
-        val buffer = ByteArray(4096)
-        var read: Int
-
-        return CRC32().let { o ->
-            while (fis.read(buffer).also { read = it } > 0) {
-                o.update(buffer, 0, read)
-            }
-            String.format("%08x", o.value)
-        }
-    }
-
-    private fun capitalize(s: String) = "${s[0].uppercase(Locale.getDefault())}${s.substring(1)}"
-
 }

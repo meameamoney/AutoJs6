@@ -8,6 +8,8 @@ import android.view.WindowManager
 import androidx.core.graphics.drawable.toDrawable
 import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
+import org.autojs.autojs.core.looper.Loopers
+import org.autojs.autojs.core.looper.Timer
 import org.autojs.autojs.core.ui.JsViewHelper
 import org.autojs.autojs.core.ui.ViewExtras
 import org.autojs.autojs.core.ui.attribute.ViewAttributeDelegate
@@ -20,19 +22,21 @@ import org.autojs.autojs.core.ui.nativeview.NativeView
 import org.autojs.autojs.core.ui.widget.JsListView
 import org.autojs.autojs.core.ui.widget.JsWebView
 import org.autojs.autojs.execution.ScriptExecuteActivity
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.AnyExtensions.jsSanitize
-import org.autojs.autojs.extension.AnyExtensions.jsUnwrapped
-import org.autojs.autojs.extension.FlexibleArray.Companion.component1
-import org.autojs.autojs.extension.FlexibleArray.Companion.component2
-import org.autojs.autojs.extension.FlexibleArray.Companion.component3
-import org.autojs.autojs.extension.FlexibleArray.Companion.component4
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component2
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component3
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component4
 import org.autojs.autojs.rhino.ProxyObject.Companion.PROXY_GETTER_KEY
 import org.autojs.autojs.rhino.ProxyObject.Companion.PROXY_OBJECT_KEY
 import org.autojs.autojs.rhino.ProxyObject.Companion.PROXY_SETTER_KEY
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsSanitize
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsUnwrapped
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableObjectExtensions.inquire
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.augment.AugmentableProxy
 import org.autojs.autojs.runtime.api.augment.colors.ColorNativeObject
@@ -47,6 +51,7 @@ import org.autojs.autojs.util.RhinoUtils.callFunction
 import org.autojs.autojs.util.RhinoUtils.coerceBoolean
 import org.autojs.autojs.util.RhinoUtils.coerceIntNumber
 import org.autojs.autojs.util.RhinoUtils.coerceLongNumber
+import org.autojs.autojs.util.RhinoUtils.coerceObject
 import org.autojs.autojs.util.RhinoUtils.coerceString
 import org.autojs.autojs.util.RhinoUtils.initNewBaseFunction
 import org.autojs.autojs.util.RhinoUtils.newBaseFunction
@@ -58,7 +63,6 @@ import org.autojs.autojs6.R
 import org.mozilla.javascript.BaseFunction
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.NativeArray
-import org.mozilla.javascript.NativeFunction
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.NativeWith
 import org.mozilla.javascript.Scriptable
@@ -84,7 +88,7 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
 
     override val key = super.key.lowercase()
 
-    private val mProperties = ConcurrentHashMap<String, Any?>()
+    private val mProperties = ConcurrentHashMap<String, Any>()
 
     private val mWidgetConstructor = object : BaseFunction() {
 
@@ -107,7 +111,7 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         ::__inflate__.name,
         ::inflate.name,
         ::useAndroidLayout.name,
-        ::isUiThread.name,
+        ::isUiThread.name to AS_GLOBAL,
         ::post.name,
         ::layout.name,
         ::layoutFile.name,
@@ -125,12 +129,16 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         ::findView.name,
         ::finish.name,
         ::keepScreenOn.name,
+        ::getStatusBarHeight.name,
+        ::getVisibleStatusBarHeight.name,
+        ::getNavigationBarHeight.name,
+        ::getVisibleNavigationBarHeight.name,
     )
 
-    override val selfAssignmentGetters = listOf<Pair<String, Supplier<Any?>>>(
-        "R" to Supplier { scriptRuntime.topLevelScope.prop("R").jsUnwrapped() },
+    override val selfAssignmentGetters = listOf(
+        "R" to Supplier { scriptRuntime.augmentedAutojs["R"] },
         "__widgets__" to Supplier { scriptRuntime.ui.widgets },
-        "root" to Supplier {
+        "root" to Supplier<Any?> {
             val activity = getActivity(scriptRuntime)
             (activity as? ScriptExecuteActivity)?.findViewById(android.R.id.content)
         },
@@ -139,7 +147,24 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
             (activity as? ScriptExecuteActivity)?.eventEmitter
         },
         "statusBarHeight" to Supplier {
-            ViewUtils.getStatusBarHeightByDimen(globalContext)
+            val activity = getActivity(scriptRuntime)
+            val context = (activity as? ScriptExecuteActivity) ?: globalContext
+            ViewUtils.getStatusBarHeight(context)
+        },
+        "visibleStatusBarHeight" to Supplier {
+            val activity = getActivity(scriptRuntime)
+            val context = (activity as? ScriptExecuteActivity) ?: globalContext
+            ViewUtils.getStatusBarHeight(context, ignoreVisibility = false)
+        },
+        "navigationBarHeight" to Supplier {
+            val activity = getActivity(scriptRuntime)
+            val context = (activity as? ScriptExecuteActivity) ?: globalContext
+            ViewUtils.getNavigationBarHeight(context)
+        },
+        "visibleNavigationBarHeight" to Supplier {
+            val activity = getActivity(scriptRuntime)
+            val context = (activity as? ScriptExecuteActivity) ?: globalContext
+            ViewUtils.getNavigationBarHeight(context, ignoreVisibility = false)
         },
     )
 
@@ -207,8 +232,8 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         override fun beforeCreateView(inflateContext: InflateContext, node: Node?, viewName: String, parent: ViewGroup?): View? {
             val widgets = scriptRuntime.ui.widgets
             if (widgets.contains(viewName)) {
-                val ctor = widgets.prop(viewName) as NativeFunction
-                val widget = withRhinoContext { cx ->
+                val ctor = widgets.prop(viewName) as BaseFunction
+                val widget = withRhinoContext(scriptRuntime) { cx ->
                     ctor.construct(cx, scriptRuntime.topLevelScope, arrayOf())
                 } as ScriptableObject
                 val f = widget.prop("renderInternal") as BaseFunction
@@ -338,7 +363,7 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
     }
 
     @Suppress("FunctionName")
-    companion object {
+    companion object : ArgumentGuards() {
 
         private const val WIDGET_KEY = "Widget"
 
@@ -353,11 +378,11 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         @RhinoFunctionBody
         fun __inflateRhinoRuntime__(scriptRuntime: ScriptRuntime, ctx: Any?, xml: Any?, parent: Any?, isAttachedToParent: Any?): View {
             require(ctx is InflateContext) {
-                "Augment ctx for ui.__inflate__ must be a InflateContext instead of ${ctx.jsBrief()}"
+                "Argument \"ctx\" ${ctx.jsBrief()} for ui.__inflate__ must be a InflateContext instead of ${ctx.jsBrief()}"
             }
             val parentView = parent.jsSanitize()
             require(parentView is ViewGroup?) {
-                "Augment parentView for ui.__inflate__ must be a ViewGroup instead of ${parentView.jsBrief()}"
+                "Argument \"parentView\" ${parentView.jsBrief()} for ui.__inflate__ must be a ViewGroup instead of ${parentView.jsBrief()}"
             }
             return scriptRuntime.ui.layoutInflater.inflate(ctx, toXMLString(xml), parentView, coerceBoolean(isAttachedToParent, false))
         }
@@ -374,7 +399,7 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         fun inflateRhinoRuntime(scriptRuntime: ScriptRuntime, xml: Any?, parent: Any? = null, isAttachedToParent: Any? = false): NativeView {
             val parentView = parent.jsSanitize()
             require(parentView is ViewGroup?) {
-                "Augment parentView for ui.inflate must be a ViewGroup instead of ${parentView.jsBrief()}"
+                "Argument \"parentView\" ${parentView.jsBrief()} for ui.inflate must be a ViewGroup instead of ${parentView.jsBrief()}"
             }
             val activity = getActivity(scriptRuntime)
             scriptRuntime.ui.layoutInflater.context = when {
@@ -408,31 +433,26 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         @RhinoFunctionBody
         fun runRhinoRuntime(scriptRuntime: ScriptRuntime, action: Any?): Any? {
             require(action is BaseFunction) {
-                "Argument action for ui.run must be a JavaScript Function instead of ${action.jsBrief()}"
+                "Argument \"action\" ${action.jsBrief()} for ui.run must be a JavaScript Function"
             }
             return when {
                 RhinoUtils.isUiThread() -> callFunction(scriptRuntime, action, arrayOf())
                 else -> {
-                    var error: Exception? = null
+                    var error: Throwable? = null
                     var result: Any? = null
                     val disposable = scriptRuntime.threads.disposable()
                     scriptRuntime.uiHandler.post {
                         try {
                             result = callFunction(scriptRuntime, action, arrayOf())
-                        } catch (e: Exception) {
-                            error = e
+                        } catch (t: Throwable) {
+                            error = t
                         } finally {
                             disposable.setAndNotify(true)
                         }
                     }
                     disposable.blockedGet()
 
-                    error?.let {
-                        scriptRuntime.console.warn("${error.jsBrief()} occurred in `ui.run()`")
-                        scriptRuntime.console.warn(it.message)
-                        scriptRuntime.console.warn(it.stackTraceToString())
-                        throw it
-                    }
+                    error?.let { throw it }
                     result
                 }
             }
@@ -455,11 +475,17 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         @RhinoFunctionBody
         fun postRhinoRuntime(scriptRuntime: ScriptRuntime, action: Any?, delay: Any? = null): Boolean {
             require(action is BaseFunction) {
-                "Argument action for ui.post must be a JavaScript Function instead of ${action.jsBrief()}"
+                "Argument \"action\" ${action.jsBrief()} for ui.post must be a JavaScript Function"
             }
+            val loopers = scriptRuntime.loopers
+            val timer = scriptRuntime.timers.timerForCurrentThread
+            val waitId = timer?.let { loopers.waitWhenIdle() } ?: -1
+
+            val uiAction = wrapUiActionForPost(scriptRuntime, action, loopers, timer, waitId)
+
             return when {
-                delay.isJsNullish() -> scriptRuntime.uiHandler.post(wrapUiAction(scriptRuntime, action))
-                else -> scriptRuntime.uiHandler.postDelayed(wrapUiAction(scriptRuntime, action), coerceLongNumber(delay, 0L))
+                delay.isJsNullish() -> scriptRuntime.uiHandler.post(uiAction)
+                else -> scriptRuntime.uiHandler.postDelayed(uiAction, coerceLongNumber(delay, 0L))
             }
         }
 
@@ -496,10 +522,10 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         fun registerWidgetRhinoRuntime(scriptRuntime: ScriptRuntime, name: Any?, widget: Any?): Undefined {
             val niceName = coerceString(name, "")
             require(niceName.isNotEmpty()) {
-                "Argument name for ui.registerWidget must be a valid non-empty string"
+                "Argument \"name\" ${name.jsBrief()} for ui.registerWidget must be a valid non-empty string"
             }
             require(widget is BaseFunction) {
-                "Argument widget for ui.registerWidget must be a JavaScript Function instead of ${widget.jsBrief()}"
+                "Argument \"widget\" ${widget.jsBrief()} for ui.registerWidget must be a JavaScript Function"
             }
             scriptRuntime.ui.widgets.defineProp(niceName, widget)
             return UNDEFINED
@@ -515,7 +541,7 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         @RhinoFunctionBody
         fun setContentViewRhinoRuntime(scriptRuntime: ScriptRuntime, view: Any?): Undefined {
             require(view is View) {
-                "Argument view for ui.setContentView must be a View instead of ${view.jsBrief()}"
+                "Argument \"view\" ${view.jsBrief()} for ui.setContentView must be a View"
             }
             ensureActivity(scriptRuntime) { activity ->
                 scriptRuntime.ui.view = view
@@ -621,13 +647,8 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         @RhinoRuntimeFunctionInterface
         fun findById(scriptRuntime: ScriptRuntime, args: Array<out Any?>): Any? = ensureArgumentsOnlyOne(args) { id ->
             when {
-                id.isJsNullish() -> {
-                    findByIdRhinoWithRuntime(scriptRuntime, null)
-                }
-                else -> {
-                    // require(id is String) { "Argument id for ui.findById must be a string instead of ${id.jsBrief()}" }
-                    findByIdRhinoWithRuntime(scriptRuntime, coerceString(id))
-                }
+                id.isJsNullish() -> findByIdRhinoWithRuntime(scriptRuntime, null)
+                else -> findByIdRhinoWithRuntime(scriptRuntime, coerceString(id))
             }
         }
 
@@ -642,15 +663,10 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         @RhinoRuntimeFunctionInterface
         fun findByStringId(scriptRuntime: ScriptRuntime, args: Array<out Any?>): Any? = ensureArgumentsLength(args, 2) { argList ->
             val (view, id) = argList
-            require(view is View) { "Argument view for ui.findByStringId must be a View instead of ${view.jsBrief()}" }
+            require(view is View) { "Argument \"view\" ${view.jsBrief()} for ui.findByStringId must be a View" }
             when {
-                id.isJsNullish() -> {
-                    findByStringIdRhinoRuntime(scriptRuntime, view, null)
-                }
-                else -> {
-                    // require(id is String) { "Argument id for ui.findByStringId must be a string instead of ${id.jsBrief()}" }
-                    findByStringIdRhinoRuntime(scriptRuntime, view, coerceString(id))
-                }
+                id.isJsNullish() -> findByStringIdRhinoRuntime(scriptRuntime, view, null)
+                else -> findByStringIdRhinoRuntime(scriptRuntime, view, coerceString(id))
             }
         }
 
@@ -665,13 +681,8 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
         @RhinoRuntimeFunctionInterface
         fun findView(scriptRuntime: ScriptRuntime, args: Array<out Any?>): Any? = ensureArgumentsOnlyOne(args) { id ->
             when {
-                id.isJsNullish() -> {
-                    findByIdRhinoWithRuntime(scriptRuntime, null)
-                }
-                else -> {
-                    // require(id is String) { "Argument id for ui.findView must be a string instead of ${id.jsBrief()}" }
-                    findByIdRhinoWithRuntime(scriptRuntime, coerceString(id))
-                }
+                id.isJsNullish() -> findByIdRhinoWithRuntime(scriptRuntime, null)
+                else -> findByIdRhinoWithRuntime(scriptRuntime, coerceString(id))
             }
         }
 
@@ -695,6 +706,48 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
             UNDEFINED
         }
 
+        @JvmStatic
+        @RhinoRuntimeFunctionInterface
+        fun getStatusBarHeight(scriptRuntime: ScriptRuntime, args: Array<out Any?>): Int = ensureArgumentsAtMost(args, 1) { argList ->
+            val (options) = argList
+            val opt = coerceObject(options, newNativeObject())
+            val withComputed = opt.inquire("withComputed", ::coerceBoolean, true)
+            val withDimen = opt.inquire("withDimen", ::coerceBoolean, true)
+            val ignoreVisibility = opt.inquire("ignoreVisibility", ::coerceBoolean, true)
+            ViewUtils.getStatusBarHeight(globalContext, withComputed, withDimen, ignoreVisibility)
+        }
+
+        @JvmStatic
+        @RhinoRuntimeFunctionInterface
+        fun getVisibleStatusBarHeight(scriptRuntime: ScriptRuntime, args: Array<out Any?>): Int = ensureArgumentsAtMost(args, 1) { argList ->
+            val (options) = argList
+            val opt = coerceObject(options, newNativeObject())
+            val withComputed = opt.inquire("withComputed", ::coerceBoolean, true)
+            val withDimen = opt.inquire("withDimen", ::coerceBoolean, true)
+            ViewUtils.getStatusBarHeight(globalContext, withComputed, withDimen, ignoreVisibility = false)
+        }
+
+        @JvmStatic
+        @RhinoRuntimeFunctionInterface
+        fun getNavigationBarHeight(scriptRuntime: ScriptRuntime, args: Array<out Any?>): Int = ensureArgumentsAtMost(args, 1) { argList ->
+            val (options) = argList
+            val opt = coerceObject(options, newNativeObject())
+            val withComputed = opt.inquire("withComputed", ::coerceBoolean, true)
+            val withDimen = opt.inquire("withDimen", ::coerceBoolean, true)
+            val ignoreVisibility = opt.inquire("ignoreVisibility", ::coerceBoolean, true)
+            ViewUtils.getNavigationBarHeight(globalContext, withComputed, withDimen, ignoreVisibility)
+        }
+
+        @JvmStatic
+        @RhinoRuntimeFunctionInterface
+        fun getVisibleNavigationBarHeight(scriptRuntime: ScriptRuntime, args: Array<out Any?>): Int = ensureArgumentsAtMost(args, 1) { argList ->
+            val (options) = argList
+            val opt = coerceObject(options, newNativeObject())
+            val withComputed = opt.inquire("withComputed", ::coerceBoolean, true)
+            val withDimen = opt.inquire("withDimen", ::coerceBoolean, true)
+            ViewUtils.getNavigationBarHeight(globalContext, withComputed, withDimen, ignoreVisibility = false)
+        }
+
         private fun initWidgetConstructor(ctor: BaseFunction) {
             val prototype = ctor.prop("prototype") as? ScriptableObject ?: newNativeObject()
             assignWidgetProperties(prototype)
@@ -716,11 +769,10 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
             )
         }
 
+        @Suppress("EmptyRange")
         private fun bindValueForApplyingAttribute(scriptRuntime: ScriptRuntime, value: String): String {
             val ctx = scriptRuntime.ui.bindingContext ?: return value
-            val niceCtx = ctx as? Scriptable
-                ?: Context.javaToJS(ctx, scriptRuntime.topLevelScope) as? Scriptable
-                ?: scriptRuntime.topLevelScope
+            val niceCtx = Context.toObject(ctx, ctx as? Scriptable ?: scriptRuntime.topLevelScope)
             var tmp = value
             var i = -1
             while (tmp.indexOf("{{", i + 1).also { i = it } >= 0) {
@@ -830,7 +882,7 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
                             }
                         }
                     }, NOT_CONSTRUCTABLE)
-                    withRhinoContext { cx ->
+                    withRhinoContext(scriptRuntime) { cx ->
                         arrayObserveFunc.call(cx, global, globalArray, arrayOf(dataSource, handlerFunc))
                     }
                 }
@@ -841,16 +893,23 @@ class UI(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRunt
             callFunction(scriptRuntime.js_UiExt, scriptRuntime.topLevelScope, null, arrayOf(webView))
         }
 
-        private fun wrapUiAction(scriptRuntime: ScriptRuntime, action: BaseFunction) = Runnable {
-            when {
-                !getActivity(scriptRuntime).isJsNullish() -> callFunction(scriptRuntime, action, scriptRuntime.topLevelScope, arrayOf())
-                else -> withRhinoContext { cx ->
-                    val scope = scriptRuntime.topLevelScope
-                    val func = scope.prop("__exitIfError__") as BaseFunction
-                    func.call(cx, scope, scope, arrayOf(newBaseFunction("action", {
-                        callFunction(scriptRuntime, action, arrayOf())
-                    }, NOT_CONSTRUCTABLE)))
+        private fun wrapUiActionForPost(scriptRuntime: ScriptRuntime, action: BaseFunction, loopers: Loopers, timer: Timer?, waitId: Int) = Runnable {
+            try {
+                val isAutoJsUiMode = !getActivity(scriptRuntime).isJsNullish()
+                when {
+                    isAutoJsUiMode -> {
+                        callFunction(scriptRuntime, action, scriptRuntime.topLevelScope, arrayOf())
+                    }
+                    else -> withRhinoContext(scriptRuntime) { cx ->
+                        val scope = scriptRuntime.topLevelScope
+                        val exitIfErrorFunc = scope.prop("__exitIfError__") as BaseFunction
+                        exitIfErrorFunc.call(cx, scope, scope, arrayOf(newBaseFunction("action", {
+                            callFunction(scriptRuntime, action, arrayOf())
+                        }, NOT_CONSTRUCTABLE)))
+                    }
                 }
+            } finally {
+                timer?.postDelayed({ loopers.doNotWaitWhenIdle(waitId) }, 0)
             }
         }
 

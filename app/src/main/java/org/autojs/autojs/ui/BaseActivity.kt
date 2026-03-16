@@ -17,6 +17,7 @@ import org.autojs.autojs.theme.ThemeChangeNotifier
 import org.autojs.autojs.theme.ThemeColorManager
 import org.autojs.autojs.util.LocaleUtils
 import org.autojs.autojs.util.ViewUtils
+import org.autojs.autojs.util.ViewUtils.excludeContentViewFromHorizontalNavigationBar
 import org.autojs.autojs6.R
 
 /**
@@ -38,7 +39,7 @@ abstract class BaseActivity : AppCompatActivity() {
         ViewUtils.appendSystemUiVisibility(this, SYSTEM_UI_FLAG_LAYOUT_STABLE or SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
 
         if (handleContentViewFromHorizontalNavigationBarAutomatically) {
-            ViewUtils.excludeContentViewFromHorizontalNavigationBar(this)
+            this.excludeContentViewFromHorizontalNavigationBar()
         }
 
         if (handleNavigationBarContrastEnforcedAutomatically) {
@@ -55,12 +56,15 @@ abstract class BaseActivity : AppCompatActivity() {
                 ThemeColorManager.setStatusBarBackgroundColor(this)
                 setUpStatusBarIconLightByThemeColor()
             }
+            if (handleNavigationBarContrastEnforcedAutomatically) {
+                setUpNavigationBarIconLightByNightMode()
+            }
         }
 
         // @Dubious by SuperMonster003 on Oct 28, 2024.
         //  ! Is it property to start a11y service automatically here?
         //  ! zh-CN: 无障碍服务自启动放在这里是否合适?
-        AccessibilityTool(this).apply { if (!isServiceRunning()) startService(false) }
+        AccessibilityTool(this).apply { if (!isRunning()) startService(false) }
     }
 
     private fun setApplicationLocale(context: Context) {
@@ -82,6 +86,9 @@ abstract class BaseActivity : AppCompatActivity() {
             ThemeColorManager.addActivityStatusBar(this)
             setUpStatusBarIconLightByThemeColor()
         }
+        if (handleNavigationBarContrastEnforcedAutomatically) {
+            setUpNavigationBarIconLightByNightMode()
+        }
     }
 
     override fun onResume() {
@@ -99,6 +106,10 @@ abstract class BaseActivity : AppCompatActivity() {
 
     protected fun setUpStatusBarIconLightByNightMode() {
         ViewUtils.setStatusBarIconLight(this, ViewUtils.isNightModeEnabled)
+    }
+
+    protected fun setUpNavigationBarIconLightByNightMode() {
+        ViewUtils.setNavigationBarIconLight(this, ViewUtils.isNightModeEnabled)
     }
 
     protected fun setUpStatusBarIconLightByThemeColor() {

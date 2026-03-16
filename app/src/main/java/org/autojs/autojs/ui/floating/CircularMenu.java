@@ -7,13 +7,15 @@ import android.os.RemoteException;
 import android.text.TextUtils;
 import android.view.ContextThemeWrapper;
 import android.view.View;
+import android.widget.ImageView;
 import androidx.annotation.NonNull;
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.makeramen.roundedimageview.RoundedImageView;
 import org.autojs.autojs.AutoJs;
 import org.autojs.autojs.app.AppLevelThemeDialogBuilder;
 import org.autojs.autojs.app.CircularMenuOperationDialogBuilder;
-import org.autojs.autojs.app.DialogUtils;
+import org.autojs.autojs.util.DialogUtils;
+import org.autojs.autojs.app.tool.PointerLocationTool;
 import org.autojs.autojs.core.accessibility.AccessibilityTool;
 import org.autojs.autojs.core.accessibility.Capture;
 import org.autojs.autojs.core.accessibility.LayoutInspector;
@@ -22,7 +24,10 @@ import org.autojs.autojs.core.pref.Language;
 import org.autojs.autojs.core.pref.Pref;
 import org.autojs.autojs.core.record.GlobalActionRecorder;
 import org.autojs.autojs.core.record.Recorder;
+import org.autojs.autojs.core.shizuku.IUserService;
+import org.autojs.autojs.event.GlobalKeyObserver;
 import org.autojs.autojs.model.explorer.ExplorerDirPage;
+import org.autojs.autojs.model.explorer.ExplorerPage;
 import org.autojs.autojs.model.explorer.Explorers;
 import org.autojs.autojs.model.script.Scripts;
 import org.autojs.autojs.runtime.api.WrappedShizuku;
@@ -36,7 +41,6 @@ import org.autojs.autojs.ui.floating.layoutinspector.LayoutHierarchyFloatyWindow
 import org.autojs.autojs.ui.main.MainActivity;
 import org.autojs.autojs.util.ClipboardUtils;
 import org.autojs.autojs.util.RootUtils;
-import org.autojs.autojs.util.ShellUtils;
 import org.autojs.autojs.util.ViewUtils;
 import org.autojs.autojs.util.WorkingDirectoryUtils;
 import org.autojs.autojs6.R;
@@ -47,11 +51,16 @@ import org.jdeferred.impl.DeferredObject;
 import org.jetbrains.annotations.NotNull;
 
 import java.text.MessageFormat;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Created by Stardust on Oct 18, 2017.
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Jan 20, 2026.
+ * Modified by SuperMonster003 as of Jan 20, 2026.
  */
-public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInspector.CaptureAvailableListener {
+@SuppressWarnings({"unused", "CodeBlock2Expr"})
+public class CircularMenu implements LayoutInspector.CaptureAvailableListener {
 
     public record StateChangeEvent(int currentState, int previousState) {
         /* Empty record body. */
@@ -67,13 +76,19 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
     private RoundedImageView mActionViewIcon;
     private Context mContext;
     private final GlobalActionRecorder mRecorder;
+    private final Recorder.OnStateChangedListener mRecorderStateListener;
     private CircularActionMenuBinding binding;
-    private MaterialDialog mSettingsDialog;
+    private MaterialDialog mMenuOperationDialog;
+    private MaterialDialog mScriptListDialog;
+    private ExplorerView mScriptListDialogExplorerView;
     private MaterialDialog mLayoutInspectDialog;
-    private String mRunningPackage;
-    private String mRunningActivity;
+    private String mCurrentPackage;
+    private String mCurrentActivity;
     private Deferred<Capture, Void, Void> mCaptureDeferred;
     private final AccessibilityTool mA11yTool;
+    private final PointerLocationTool mPointerLocationTool;
+    private final GlobalKeyObserver mGlobalKeyObserver;
+    private final GlobalKeyObserver.OnVolumeDownListener mVolumeDownListener;
 
     private final View.OnClickListener mCollapseWindowAndInspectLayoutBoundsListener = v -> {
         mWindow.collapse();
@@ -85,14 +100,40 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
     };
 
     public CircularMenu(Context context) {
-        // mContext = new ContextThemeWrapper(context, R.style.AppTheme);
-        mContext = context;
+        // Use application context as base to avoid being treated as Activity context.
+        // zh-CN: 使用 application context 作为 base, 避免被识别为 Activity context.
+        mContext = new ContextThemeWrapper(context.getApplicationContext(), R.style.AppTheme);
         initFloaty();
         setupWindowListeners();
         mRecorder = GlobalActionRecorder.getSingleton(context);
-        mRecorder.addOnStateChangedListener(this);
+        mRecorderStateListener = new Recorder.OnStateChangedListener() {
+            @Override
+            public void onStart() {
+                setState(STATE_RECORDING);
+            }
+
+            @Override
+            public void onStop() {
+                setState(STATE_NORMAL);
+            }
+
+            @Override
+            public void onPause() {
+                /* Empty body. */
+            }
+
+            @Override
+            public void onResume() {
+                /* Empty body. */
+            }
+        };
+        mRecorder.addOnStateChangedListener(mRecorderStateListener);
         AutoJs.getInstance().getLayoutInspector().addCaptureAvailableListener(this);
         mA11yTool = new AccessibilityTool(mContext);
+        mPointerLocationTool = new PointerLocationTool(mContext);
+        mGlobalKeyObserver = GlobalKeyObserver.getSingleton(mContext.getApplicationContext());
+        mVolumeDownListener = this::onVolumeDownForRecord;
+        mGlobalKeyObserver.addVolumeDownListener(mVolumeDownListener);
     }
 
     private void setupWindowListeners() {
@@ -112,43 +153,105 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
     private void setupBindingListeners() {
         binding.scriptList.setOnClickListener(v -> {
             mWindow.collapse();
-            ExplorerView explorerView = new ExplorerView(mContext);
-            explorerView.setExplorer(Explorers.workspace(), ExplorerDirPage.createRoot(WorkingDirectoryUtils.getPath()));
-            explorerView.setDirectorySpanSize(2);
-            final MaterialDialog dialog = new AppLevelThemeDialogBuilder(mContext)
-                    .title(mContext.getString(R.string.text_run_script))
-                    .customView(explorerView, false)
-                    .positiveText(R.string.dialog_button_dismiss)
-                    .positiveColorRes(R.color.dialog_button_default)
-                    .cancelable(false)
-                    .build();
-            explorerView.setOnItemOperateListener(item -> dialog.dismiss());
-            explorerView.setOnItemClickListener((view, item) -> {
-                if (item.isExecutable()) {
-                    Scripts.run(mContext, item.toScriptFile());
-                } else {
-                    new MaterialDialog.Builder(mContext)
-                            .title(mContext.getString(R.string.error_failed_to_run_script))
-                            .content(mContext.getString(R.string.text_file_with_abs_path_is_not_an_executable_script, item.toScriptFile().getAbsolutePath()))
-                            .positiveText(R.string.dialog_button_dismiss)
-                            .positiveColorRes(R.color.dialog_button_failure)
-                            .show();
-                }
-            });
-            explorerView.setOnProjectToolbarOperateListener(toolbar -> dialog.dismiss());
-            explorerView.setOnProjectToolbarClickListener(toolbar -> toolbar.findViewById(R.id.project_run).performClick());
-            explorerView.setProjectToolbarRunnableOnly(true);
 
-            DialogUtils.adaptToExplorer(dialog, explorerView);
-            DialogUtils.showDialog(dialog);
+            if (mScriptListDialog == null) {
+
+                mScriptListDialogExplorerView = new ExplorerView(mContext);
+                mScriptListDialogExplorerView.setExplorer(Explorers.workspace(), ExplorerDirPage.createRoot(WorkingDirectoryUtils.getPath()));
+                mScriptListDialogExplorerView.setDirectorySpanSize(2);
+
+                mScriptListDialog = new MaterialDialog.Builder(mContext)
+                        .title(R.string.text_run_script)
+                        .titleColorRes(R.color.day_night)
+                        .options(List.of(
+                                new MaterialDialog.OptionMenuItemSpec(mContext.getString(R.string.dialog_button_homepage), (d) -> {
+                                    String homepage = WorkingDirectoryUtils.getPath();
+                                    ExplorerPage currentPageStatePage = mScriptListDialogExplorerView.currentPageState.getPage();
+                                    if (currentPageStatePage != null) {
+                                        if (!Objects.equals(currentPageStatePage.getPath(), homepage)) {
+                                            mScriptListDialogExplorerView.saveCurrentPageIntoHistory();
+                                        }
+                                    }
+                                    mScriptListDialogExplorerView.setExplorer(Explorers.workspace(), ExplorerDirPage.createRoot(homepage));
+                                })
+                        ))
+                        .customView(mScriptListDialogExplorerView, false)
+                        .backgroundColorRes(R.color.window_background)
+                        .neutralText(R.string.dialog_button_minimize)
+                        .neutralColorRes(R.color.dialog_button_reset)
+                        .onNeutral((dialog, which) -> {
+                            mScriptListDialog.hide();
+                        })
+                        .positiveText(R.string.dialog_button_dismiss)
+                        .positiveColorRes(R.color.dialog_button_default)
+                        .onPositive((dialog, which) -> {
+                            dialog.dismiss();
+                        })
+                        .cancelable(false)
+                        .autoDismiss(false)
+                        .dismissListener((di) -> {
+                            mScriptListDialog = null;
+                            mScriptListDialogExplorerView = null;
+                        })
+                        .build();
+
+                var scriptListDialog = mScriptListDialog;
+
+                ImageView optionsView = scriptListDialog.getOptionsView();
+                if (optionsView != null) {
+                    optionsView.setImageTintList(ColorStateList.valueOf(mContext.getColor(R.color.dialog_options_button_tint)));
+                }
+
+                // Hide host dialog before launching Activity or showing secondary dialogs.
+                // zh-CN: 在启动 Activity 或显示二级对话框之前隐藏宿主对话框.
+                mScriptListDialogExplorerView.setRequestHostDialogHide(scriptListDialog::hide);
+
+                // Restore host dialog (overlay) when needed, keeping state.
+                // zh-CN: 需要时恢复宿主对话框 (overlay), 并保留状态.
+                mScriptListDialogExplorerView.setRequestHostDialogShow(() -> {
+                    if (!scriptListDialog.isShowing()) {
+                        DialogUtils.showAdaptive(scriptListDialog);
+                    }
+                });
+
+                // Only dismiss on clicking the item itself.
+                // zh-CN: 仅在点击条目本体时关闭对话框.
+                mScriptListDialogExplorerView.setOnItemClickListener((view, item) -> {
+                    if (item.isExecutable()) {
+                        scriptListDialog.hide();
+                        Scripts.run(view != null ? view.getContext() : mScriptListDialogExplorerView.getContext(), item.toScriptFile());
+                    } else {
+                        DialogUtils.showAdaptive(new MaterialDialog.Builder(mContext)
+                                .title(mContext.getString(R.string.error_failed_to_run_script))
+                                .content(mContext.getString(
+                                        R.string.text_file_with_abs_path_is_not_an_executable_script,
+                                        item.toScriptFile().getAbsolutePath()
+                                ))
+                                .positiveText(R.string.dialog_button_dismiss)
+                                .positiveColorRes(R.color.dialog_button_failure)
+                                .build());
+                    }
+                });
+
+                mScriptListDialogExplorerView.setOnItemOperateListener(null);
+
+                mScriptListDialogExplorerView.setOnProjectToolbarOperateListener(toolbar -> scriptListDialog.hide());
+                mScriptListDialogExplorerView.setOnProjectToolbarClickListener(toolbar -> toolbar.findViewById(R.id.project_run).performClick());
+                mScriptListDialogExplorerView.setProjectToolbarRunnableOnly(true);
+
+                DialogUtils.adaptToExplorer(scriptListDialog, mScriptListDialogExplorerView);
+            }
+
+            DialogUtils.showAdaptive(mScriptListDialog);
         });
         binding.record.setOnClickListener(v -> {
             mWindow.collapse();
-            if (!RootUtils.isRootAvailable()) {
-                DialogUtils.showDialog(new AppLevelThemeDialogBuilder(mContext)
-                        .title(mContext.getString(R.string.text_no_root_access))
-                        .content(mContext.getString(R.string.no_root_access_for_record))
-                        .positiveText(R.string.dialog_button_quit)
+            boolean hasShizukuAccessForRecord = WrappedShizuku.INSTANCE.isOperational();
+            if (!hasShizukuAccessForRecord && !RootUtils.isRootAvailable()) {
+                DialogUtils.showAdaptive(new AppLevelThemeDialogBuilder(mContext)
+                        .title(mContext.getString(R.string.text_prompt))
+                        .content(mContext.getString(R.string.error_conditions_not_met_for_record))
+                        .positiveText(R.string.dialog_button_abandon)
                         .positiveColorRes(R.color.dialog_button_failure)
                         .build());
             } else {
@@ -163,7 +266,7 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
                     .item(R.drawable.ic_circular_menu_hierarchy, mContext.getString(R.string.text_inspect_layout_hierarchy), mCollapseWindowAndInspectLayoutHierarchyListener)
                     .title(mContext.getString(R.string.text_inspect_layout))
                     .build();
-            DialogUtils.showDialog(mLayoutInspectDialog);
+            DialogUtils.showAdaptive(mLayoutInspectDialog);
             return true;
         });
         binding.stopAllScripts.setOnClickListener(v -> {
@@ -175,71 +278,66 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
         binding.actionMenuMore.setOnClickListener(v -> {
             mWindow.collapse();
 
-            if (mSettingsDialog != null && mSettingsDialog.isShowing()) {
-                mSettingsDialog.dismiss();
+            if (mMenuOperationDialog != null && mMenuOperationDialog.isShowing()) {
+                mMenuOperationDialog.dismiss();
             }
 
-            applyComponentInformation();
-
-            // noinspection CodeBlock2Expr
-            mSettingsDialog = new CircularMenuOperationDialogBuilder(mContext)
-                    .item(R.drawable.ic_accessibility_black_48dp, mContext.getString(R.string.text_manage_a11y_service), onCircularMenuItemClick(v1 -> {
-                        mA11yTool.launchSettings();
+            mMenuOperationDialog = new CircularMenuOperationDialogBuilder(mContext)
+                    .item(R.drawable.ic_accessibility_black_48dp, mContext.getString(R.string.text_a11y_service), this::getA11yState, onCircularMenuItemClick(itemView -> {
+                        mA11yTool.launchSettings(false, true);
                     }))
-                    .item(R.drawable.ic_text_fields_black_48dp, mContext.getString(R.string.text_latest_package) + ":\n" + getRunningPackage(), onCircularMenuItemClick(v1 -> {
-                        if (!TextUtils.isEmpty(mRunningPackage)) {
-                            ClipboardUtils.setClip(mContext, mRunningPackage);
+                    .item(R.drawable.ic_text_fields_black_48dp, mContext.getString(R.string.text_latest_package), this::getCurrentPackage, onCircularMenuItemClick(itemView -> {
+                        if (!TextUtils.isEmpty(mCurrentPackage)) {
+                            ClipboardUtils.setClip(mContext, mCurrentPackage);
                             ViewUtils.showToast(mContext, getTextAlreadyCopied(R.string.text_latest_package));
                         }
                     }))
-                    .item(R.drawable.ic_text_fields_black_48dp, mContext.getString(R.string.text_latest_activity) + ":\n" + getRunningActivity(), onCircularMenuItemClick(v1 -> {
-                        if (!TextUtils.isEmpty(mRunningActivity)) {
-                            ClipboardUtils.setClip(mContext, mRunningActivity);
+                    .item(R.drawable.ic_text_fields_black_48dp, mContext.getString(R.string.text_latest_activity), this::getCurrentActivity, onCircularMenuItemClick(itemView -> {
+                        if (!TextUtils.isEmpty(mCurrentActivity)) {
+                            ClipboardUtils.setClip(mContext, mCurrentActivity);
                             ViewUtils.showToast(mContext, getTextAlreadyCopied(R.string.text_latest_activity));
                         }
                     }))
-                    .item(R.drawable.ic_home_black_48dp, mContext.getString(R.string.text_open_main_activity), onCircularMenuItemClick(v1 -> {
+                    .item(R.drawable.ic_home_black_48dp, mContext.getString(R.string.text_open_main_activity), onCircularMenuItemClick(itemView -> {
                         MainActivity.launch(mContext);
                     }))
-                    .item(R.drawable.ic_control_point_black_48dp, mContext.getString(R.string.text_pointer_location), onCircularMenuItemClick(v1 -> {
-                        if (!ShellUtils.togglePointerLocation(mContext)) {
-                            ViewUtils.showToast(mContext, mContext.getString(R.string.text_pointer_location_toggle_failed_with_hint), true);
+                    .item(R.drawable.ic_control_point_black_48dp, mContext.getString(R.string.text_pointer_location), this::getPointerLocationState, onCircularMenuItemClick(itemView -> {
+                        if (PointerLocationTool.togglePointerLocation(mContext)) {
+                            // var subtitleView = itemView.findViewById(R.id.subtitle);
+                            // if (subtitleView instanceof TextView textView) {
+                            //     textView.setText(mPointerLocationTool.isShowing() ? mContext.getString(R.string.text_enabled) : mContext.getString(R.string.text_disabled));
+                            // }
+                            EventBus.getDefault().post(new PointerLocationTool.Companion.StateChangedEvent());
+                            return;
                         }
+                        // ViewUtils.showToast(mContext, mContext.getString(R.string.text_pointer_location_toggle_failed_with_hint), true);
+                        mPointerLocationTool.config();
                     }))
-                    .item(R.drawable.ic_close_white_48dp, mContext.getString(R.string.text_close_floating_button), onCircularMenuItemClick(v1 -> {
+                    .item(R.drawable.ic_close_white_48dp, mContext.getString(R.string.text_close_floating_button), onCircularMenuItemClick(itemView -> {
                         closeAndSaveState(false);
                     }))
                     .title(mContext.getString(R.string.text_more))
                     .build();
 
-            DialogUtils.showDialog(mSettingsDialog);
+            DialogUtils.showAdaptive(mMenuOperationDialog);
         });
     }
 
-    private void applyComponentInformation() {
-        if (WrappedShizuku.isOperational() && WrappedShizuku.service != null) {
-            try {
-                mRunningPackage = WrappedShizuku.service.currentPackage();
-                mRunningActivity = WrappedShizuku.service.currentActivity();
-                return;
-            } catch (RemoteException ignored) {
+    @NonNull
+    private String getA11yState() {
+        return mA11yTool.isMalfunctioning() ? mContext.getString(R.string.text_malfunctioning) : mA11yTool.isRunning() ? mContext.getString(R.string.text_enabled) : mContext.getString(R.string.text_disabled);
+    }
 
-            }
-        }
-        if (RootUtils.isRootAvailable()) {
-            mRunningPackage = Shell.currentPackageRhino();
-            mRunningActivity = Shell.currentActivityRhino();
-            return;
-        }
-        ActivityInfoProvider infoProvider = AutoJs.getInstance().getInfoProvider();
-        mRunningPackage = infoProvider.getLatestPackageByUsageStatsIfGranted();
-        mRunningActivity = infoProvider.getLatestActivity();
+    @NonNull
+    private String getPointerLocationState() {
+        return mPointerLocationTool.isShowing() ? mContext.getString(R.string.text_enabled) : mContext.getString(R.string.text_disabled);
     }
 
     @NonNull
     private View.OnClickListener onCircularMenuItemClick(View.OnClickListener listener) {
         return v -> {
             dismissSettingsDialog();
+            dismissScriptListDialog();
             listener.onClick(v);
         };
     }
@@ -291,12 +389,35 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
         mRecorder.stop();
     }
 
+    private void onVolumeDownForRecord() {
+        if (!Pref.isUseVolumeControlRecordEnabled() || mState == STATE_CLOSED) {
+            return;
+        }
+        Runnable toggleTask = () -> {
+            if (isRecording()) {
+                stopRecord();
+                return;
+            }
+            boolean hasShizukuAccessForRecord = WrappedShizuku.INSTANCE.isOperational();
+            if (hasShizukuAccessForRecord || RootUtils.isRootAvailable()) {
+                mRecorder.start();
+            } else {
+                ViewUtils.showToast(mContext, mContext.getString(R.string.no_root_access_for_record));
+            }
+        };
+        if (mActionViewIcon != null) {
+            mActionViewIcon.post(toggleTask);
+        } else {
+            toggleTask.run();
+        }
+    }
+
     private void inspectLayout(Func1<Capture, FloatyWindow> windowCreator) {
         if (mLayoutInspectDialog != null) {
             mLayoutInspectDialog.dismiss();
             mLayoutInspectDialog = null;
         }
-        if (!mA11yTool.isServiceRunning()) {
+        if (!mA11yTool.isRunning()) {
             if (!mA11yTool.startService(false)) {
                 ViewUtils.showToast(mContext, mContext.getString(R.string.error_no_accessibility_permission_to_capture));
                 mA11yTool.launchSettings();
@@ -322,16 +443,58 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
         mWindow.savePosition(newConfig);
     }
 
-    private String getRunningPackage() {
-        if (!TextUtils.isEmpty(mRunningPackage)) {
-            return mRunningPackage;
+    private String getCurrentPackage() {
+        if (WrappedShizuku.INSTANCE.isOperational()) {
+            try {
+                IUserService service = WrappedShizuku.getServiceOrNull();
+                if (service != null) {
+                    mCurrentPackage = service.currentPackage();
+                    if (!TextUtils.isEmpty(mCurrentPackage)) {
+                        return mCurrentPackage;
+                    }
+                }
+            } catch (RemoteException ignored) {
+                /* Ignored. */
+            }
+        }
+        if (RootUtils.isRootAvailable()) {
+            mCurrentPackage = Shell.currentPackageRhino();
+            if (!TextUtils.isEmpty(mCurrentPackage)) {
+                return mCurrentPackage;
+            }
+        }
+        ActivityInfoProvider infoProvider = AutoJs.getInstance().getInfoProvider();
+        mCurrentPackage = infoProvider.getLatestPackageByUsageStatsIfGranted();
+        if (!TextUtils.isEmpty(mCurrentPackage)) {
+            return mCurrentPackage;
         }
         return getEmptyInfoHint();
     }
 
-    private String getRunningActivity() {
-        if (!TextUtils.isEmpty(mRunningActivity)) {
-            return mRunningActivity;
+    private String getCurrentActivity() {
+        if (WrappedShizuku.INSTANCE.isOperational()) {
+            try {
+                IUserService service = WrappedShizuku.getServiceOrNull();
+                if (service != null) {
+                    mCurrentActivity = service.currentActivity();
+                    if (!TextUtils.isEmpty(mCurrentActivity)) {
+                        return mCurrentActivity;
+                    }
+                }
+            } catch (RemoteException ignored) {
+                /* Ignored. */
+            }
+        }
+        if (RootUtils.isRootAvailable()) {
+            mCurrentActivity = Shell.currentActivityRhino();
+            if (!TextUtils.isEmpty(mCurrentActivity)) {
+                return mCurrentActivity;
+            }
+        }
+        ActivityInfoProvider infoProvider = AutoJs.getInstance().getInfoProvider();
+        mCurrentActivity = infoProvider.getLatestActivity();
+        if (!TextUtils.isEmpty(mCurrentActivity)) {
+            return mCurrentActivity;
         }
         return getEmptyInfoHint();
     }
@@ -350,9 +513,19 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
     }
 
     private void dismissSettingsDialog() {
-        if (mSettingsDialog != null) {
-            mSettingsDialog.dismiss();
-            mSettingsDialog = null;
+        if (mMenuOperationDialog != null) {
+            mMenuOperationDialog.dismiss();
+            mMenuOperationDialog = null;
+        }
+    }
+
+    private void dismissScriptListDialog() {
+        if (mScriptListDialog != null) {
+            mScriptListDialog.dismiss();
+            mScriptListDialog = null;
+        }
+        if (mScriptListDialogExplorerView != null) {
+            mScriptListDialogExplorerView = null;
         }
     }
 
@@ -365,6 +538,7 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
 
     public void close() {
         dismissSettingsDialog();
+        dismissScriptListDialog();
         try {
             mWindow.close();
         } catch (IllegalArgumentException e) {
@@ -373,28 +547,8 @@ public class CircularMenu implements Recorder.OnStateChangedListener, LayoutInsp
             EventBus.getDefault().post(new StateChangeEvent(STATE_CLOSED, mState));
             mState = STATE_CLOSED;
         }
-        mRecorder.removeOnStateChangedListener(this);
+        mRecorder.removeOnStateChangedListener(mRecorderStateListener);
         AutoJs.getInstance().getLayoutInspector().removeCaptureAvailableListener(this);
+        mGlobalKeyObserver.removeVolumeDownListener(mVolumeDownListener);
     }
-
-    @Override
-    public void onStart() {
-        setState(STATE_RECORDING);
-    }
-
-    @Override
-    public void onStop() {
-        setState(STATE_NORMAL);
-    }
-
-    @Override
-    public void onPause() {
-        /* Empty body. */
-    }
-
-    @Override
-    public void onResume() {
-        /* Empty body. */
-    }
-
 }

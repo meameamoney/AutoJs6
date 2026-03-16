@@ -4,25 +4,28 @@ import org.autojs.autojs.AutoJs
 import org.autojs.autojs.annotation.RhinoFunctionBody
 import org.autojs.autojs.annotation.RhinoSingletonFunctionInterface
 import org.autojs.autojs.annotation.RhinoStandardFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.isJsArray
-import org.autojs.autojs.extension.AnyExtensions.isJsBigInt
-import org.autojs.autojs.extension.AnyExtensions.isJsBoolean
-import org.autojs.autojs.extension.AnyExtensions.isJsDate
-import org.autojs.autojs.extension.AnyExtensions.isJsError
-import org.autojs.autojs.extension.AnyExtensions.isJsFunction
-import org.autojs.autojs.extension.AnyExtensions.isJsNonNullObject
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.isJsNumber
-import org.autojs.autojs.extension.AnyExtensions.isJsObject
-import org.autojs.autojs.extension.AnyExtensions.isJsRegExp
-import org.autojs.autojs.extension.AnyExtensions.isJsString
-import org.autojs.autojs.extension.AnyExtensions.isJsSymbol
-import org.autojs.autojs.extension.AnyExtensions.isJsUndefined
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.FlexibleArray
-import org.autojs.autojs.extension.NumberExtensions.jsString
-import org.autojs.autojs.extension.ScriptableExtensions.prop
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsArray
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsBigInt
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsBoolean
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsDate
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsError
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsFunction
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNonNullObject
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNumber
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsObject
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsRegExp
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsString
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsSymbol
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsUndefined
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component2
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component3
+import org.autojs.autojs.rhino.extension.NumberExtensions.jsString
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.api.augment.global.Species
 import org.autojs.autojs.runtime.api.augment.util.Inspect.inspectRhino
@@ -33,6 +36,7 @@ import org.autojs.autojs.util.RhinoUtils.ObsoletedRhinoFunctionException
 import org.autojs.autojs.util.RhinoUtils.callToStringFunction
 import org.autojs.autojs.util.RhinoUtils.coerceFloatNumber
 import org.autojs.autojs.util.RhinoUtils.coerceNumber
+import org.autojs.autojs.util.RhinoUtils.coerceString
 import org.autojs.autojs.util.RhinoUtils.js_function_bind
 import org.autojs.autojs.util.RhinoUtils.js_json_stringify
 import org.autojs.autojs.util.RhinoUtils.js_object_create
@@ -62,12 +66,13 @@ import org.mozilla.javascript.ScriptRuntime as RhinoScriptRuntime
 object Util : Augmentable() {
 
     override val selfAssignmentFunctions = listOf(
+        ::__assignFunctions__.name to (READONLY or DONTENUM or PERMANENT),
         ::isArray.name,
         ::isBoolean.name,
         ::isNull.name,
         ::isNullOrUndefined.name,
         ::isNumber.name,
-        ::isSting.name,
+        ::isString.name,
         ::isSymbol.name,
         ::isUndefined.name,
         ::isRegExp.name,
@@ -84,15 +89,10 @@ object Util : Augmentable() {
         ::isEmptyObject.name,
         ::unwrapJavaObject.name,
         ::extend.name,
-        ::__assignFunctions__.name,
         ::format.name,
         ::deprecate.name,
         ::debuglog.name,
         ::log.name,
-        ::`class`.name,
-        ::getClass.name,
-        ::className.name,
-        ::getClassName.name,
         ::checkStringArgument.name,
         ::assureStringStartsWith.name,
         ::assureStringEndsWith.name,
@@ -154,7 +154,7 @@ object Util : Augmentable() {
 
     @JvmStatic
     @RhinoSingletonFunctionInterface
-    fun isSting(args: Array<out Any?>): Boolean = ensureArgumentsOnlyOne(args) {
+    fun isString(args: Array<out Any?>): Boolean = ensureArgumentsOnlyOne(args) {
         it.isJsString()
     }
 
@@ -321,9 +321,9 @@ object Util : Augmentable() {
     @JvmStatic
     @RhinoFunctionBody
     fun __assignFunctions__Rhino(src: Any?, target: Any?, funcNames: Any?) {
-        if (src !is ScriptableObject) throw WrappedIllegalArgumentException("Argument src for util.__assignFunctions__ must be a ScriptableObject")
-        if (target !is ScriptableObject) throw WrappedIllegalArgumentException("Argument target for util.__assignFunctions__ must be a ScriptableObject")
-        if (funcNames !is NativeArray) throw WrappedIllegalArgumentException("Argument funcNames for util.__assignFunctions__ must be a NativeArray")
+        if (src !is ScriptableObject) throw WrappedIllegalArgumentException("Argument \"src\" ${src.jsBrief()} for util.__assignFunctions__ must be a ScriptableObject")
+        if (target !is ScriptableObject) throw WrappedIllegalArgumentException("Argument \"target\" ${target.jsBrief()} for util.__assignFunctions__ must be a ScriptableObject")
+        if (funcNames !is NativeArray) throw WrappedIllegalArgumentException("Argument \"funcNames\" ${funcNames.jsBrief()} for util.__assignFunctions__ must be a NativeArray")
 
         funcNames.forEach { funcName ->
             val name = Context.toString(funcName)
@@ -347,31 +347,106 @@ object Util : Augmentable() {
     @JvmStatic
     @RhinoFunctionBody
     fun formatRhino(vararg args: Any?): String {
-        var index = 1
         if (args.isEmpty()) return ""
 
-        val first = args.first()
-        if (first !is String) return args.joinToString(" ") { inspectRhino(it) }
+        val first = args[0]
+        if (!first.isJsString()) {
+            return args.joinToString(" ") { inspectRhino(it) }
+        }
 
-        var str = first.replace(Regex("%[sdj%]")) { matchResult ->
-            if (matchResult.value == "%%") return@replace "%"
-            if (index >= args.size) return@replace matchResult.value
+        val argsSize = args.size
+        var index = 1
+        val fmt = coerceString(first)
+        val len = fmt.length
+        // Estimate some margin to reduce expansion.
+        // zh-CN: 预估一些余量, 减少扩容.
+        val sb = StringBuilder(len + 16)
 
-            when (matchResult.value) {
-                "%s" -> Context.toString(args[index++])
-                "%d" -> Context.toNumber(args[index++]).jsString
-                "%j" -> try {
-                    Context.toString(js_json_stringify(args[index++]))
-                } catch (e: Exception) {
-                    "[Circular]"
+        var i = 0
+        while (i < len) {
+            val ch = fmt[i]
+            if (ch != '%') {
+                sb.append(ch)
+                i++
+                continue
+            }
+
+            // '%' at last char -> append '%'.
+            if (i + 1 >= len) {
+                sb.append('%')
+                i++
+                continue
+            }
+
+            when (val spec = fmt[i + 1]) {
+                '%' -> {
+                    sb.append('%')
+                    i += 2
                 }
-                else -> matchResult.value
+                's' -> {
+                    if (index >= argsSize) {
+                        // Keep the placeholder as is when no corresponding parameter exists.
+                        // zh-CN: 没有对应参数, 保持占位符原样.
+                        sb.append('%').append('s')
+                    } else {
+                        sb.append(Context.toString(args[index++]))
+                    }
+                    i += 2
+                }
+                'd' -> {
+                    if (index >= argsSize) {
+                        sb.append('%').append('d')
+                    } else {
+                        sb.append(Context.toNumber(args[index++]).jsString)
+                    }
+                    i += 2
+                }
+                'j' -> {
+                    if (index >= argsSize) {
+                        sb.append('%').append('j')
+                    } else {
+                        try {
+                            sb.append(Context.toString(js_json_stringify(args[index++])))
+                        } catch (_: Throwable) {
+                            sb.append("[Circular]")
+                        }
+                    }
+                    i += 2
+                }
+                else -> {
+                    // Keep unknown placeholders as is.
+                    // zh-CN: 未知占位符, 按原样输出.
+                    sb.append('%').append(spec)
+                    i += 2
+                }
             }
         }
 
-        args.copyOfRange(index, args.size).forEach { x -> str += " ${inspectRhino(x)}" }
+        // Do NOT inspect the formatted string, otherwise control characters like '\n' will be escaped.
+        // zh-CN: 不要对格式化结果做 inspect, 否则诸如 '\n' 的控制字符会被转义.
+        val formatted = sb.toString()
 
-        return str
+        return when {
+            index >= argsSize -> formatted
+            else -> {
+                // Append remaining parameters, separated by spaces.
+                // zh-CN: 追加剩余参数, 以空格分隔.
+                val out = StringBuilder(formatted.length + 1 + (argsSize - index) * 8)
+                out.append(formatted)
+
+                while (index < argsSize) {
+                    val x = args[index++]
+                    out.append(' ')
+                    if (x == null || !x.isJsObject()) {
+                        out.append(Context.toString(x))
+                    } else {
+                        out.append(inspectRhino(x))
+                    }
+                }
+
+                out.toString()
+            }
+        }
     }
 
     @JvmStatic
@@ -459,40 +534,6 @@ object Util : Augmentable() {
     }
 
     @JvmStatic
-    @RhinoSingletonFunctionInterface
-    fun `class`(args: Array<out Any?>): Scriptable = ensureArgumentsOnlyOne(args) { o ->
-        require(o != null) { "Argument for util.class must be non-null" }
-        getClassInternal(o)
-    }
-
-    @JvmStatic
-    @RhinoSingletonFunctionInterface
-    fun getClass(args: Array<out Any?>): Scriptable = ensureArgumentsOnlyOne(args) { o ->
-        require(o != null) { "Argument for util.getClass must be non-null" }
-        getClassInternal(o)
-    }
-
-    @JvmStatic
-    @RhinoSingletonFunctionInterface
-    fun className(args: Array<out Any?>): String = ensureArgumentsOnlyOne(args) {
-        when (it) {
-            null -> throw WrappedIllegalArgumentException("Argument for util.className must be non-null")
-            is Class<*> -> it.name
-            else -> it.javaClass.name
-        }
-    }
-
-    @JvmStatic
-    @RhinoSingletonFunctionInterface
-    fun getClassName(args: Array<out Any?>): String = ensureArgumentsOnlyOne(args) {
-        when (it) {
-            null -> throw WrappedIllegalArgumentException("Argument for util.getClassName must be non-null")
-            is Class<*> -> it.name
-            else -> it.javaClass.name
-        }
-    }
-
-    @JvmStatic
     @Deprecated("Deprecated in Java", ReplaceWith("checkStringArgument(args)"))
     @RhinoSingletonFunctionInterface
     fun checkStringParam(args: Array<out Any?>): Boolean = checkStringArgument(args)
@@ -513,7 +554,7 @@ object Util : Augmentable() {
             else -> throw Error("Unknown pattern $pattern for util.checkStringArgument")
         }
         val niceSrc = when {
-            src.isJsNullish() -> throw WrappedIllegalArgumentException("Argument src for util.checkStringArgument must be non-nullish")
+            src.isJsNullish() -> throw WrappedIllegalArgumentException("Argument \"src\" ${src.jsBrief()} for util.checkStringArgument must be non-nullish")
             isPrimitiveRhino(src) -> Context.toString(src)
             else -> throw Error("Param src must be non-nullish")
         }
@@ -530,8 +571,8 @@ object Util : Augmentable() {
     @JvmStatic
     @RhinoFunctionBody
     fun assureStringStartsWithRhino(s: Any?, start: Any?): String {
-        if (s !is String) throw WrappedIllegalArgumentException("Argument s for util.assureStringStartsWith must be a string")
-        if (start !is String) throw WrappedIllegalArgumentException("Argument start for util.assureStringStartsWith must be a string")
+        if (s !is String) throw WrappedIllegalArgumentException("Argument \"s\" ${s.jsBrief()} for util.assureStringStartsWith must be a string")
+        if (start !is String) throw WrappedIllegalArgumentException("Argument \"start\" ${start.jsBrief()} for util.assureStringStartsWith must be a string")
         return if (s.startsWith(start)) s else start + s
     }
 
@@ -545,8 +586,8 @@ object Util : Augmentable() {
     @JvmStatic
     @RhinoFunctionBody
     fun assureStringEndsWithRhino(s: Any?, end: Any?): String {
-        if (s !is String) throw WrappedIllegalArgumentException("Argument s for util.assureStringEndsWith must be a string")
-        if (end !is String) throw WrappedIllegalArgumentException("Argument end for util.assureStringEndsWith must be a string")
+        if (s !is String) throw WrappedIllegalArgumentException("Argument \"s\" ${s.jsBrief()} for util.assureStringEndsWith must be a string")
+        if (end !is String) throw WrappedIllegalArgumentException("Argument \"end\" ${end.jsBrief()} for util.assureStringEndsWith must be a string")
         return if (s.endsWith(end)) s else s + end
     }
 
@@ -768,21 +809,16 @@ object Util : Augmentable() {
         coerceNumber(DisplayUtils.pxToSp(coerceFloatNumber(it)))
     }
 
-    private fun getClassInternal(o: Any): Scriptable = when (o) {
-        is Class<*> -> o
-        else -> o.javaClass
-    }.let { cls -> withRhinoContext { cx -> cx.wrapFactory.wrapJavaClass(cx, ImporterTopLevel(cx), cls) } }
-
     internal class RegularFunction(private val func: BaseFunction) : BaseFunction() {
 
         override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<out Any?>): Any {
             return func.call(cx, scope, null, args)
         }
 
-        companion object : FlexibleArray() {
+        companion object : ArgumentGuards() {
             @JvmStatic
             @RhinoStandardFunctionInterface
-            fun toString(cx: Context, thisObj: Scriptable, args: Array<Any?>, funObj: Function) = ensureArgumentsIsEmpty(args) {
+            fun toString(cx: Context, thisObj: Scriptable, args: Array<Any?>, funObj: Function): String = ensureArgumentsIsEmpty(args) {
                 when (thisObj) {
                     is RegularFunction -> callToStringFunction(thisObj.func)
                     else -> callToStringFunction(thisObj)

@@ -6,10 +6,11 @@ import androidx.core.app.NotificationCompat.BigTextStyle
 import androidx.core.app.NotificationCompat.Builder
 import androidx.core.app.NotificationManagerCompat
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.ScriptableExtensions.prop
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.AppUtils
 import org.autojs.autojs.runtime.api.augment.Augmentable
@@ -31,15 +32,6 @@ import org.mozilla.javascript.Undefined
 import java.util.function.Supplier
 import kotlin.math.roundToInt
 import kotlin.reflect.KMutableProperty1
-
-// @Caution by SuperMonster003 on May 6, 2023.
-//  ! On device running with Android 7.x, importing NotificationManagerCompat will cause an exception:
-//  ! java.lang.ClassNotFoundException: Didn't find class "android.app.NotificationChannel" on path: DexPathList ...
-//  ! zh-CN:
-//  ! 在安卓 7.x 设备上, 导入 NotificationManagerCompat 类将导致异常:
-//  ! java.lang.ClassNotFoundException: 无法找到 "android.app.NotificationChannel" 类在此路径: DexPathList ...
-//  !
-//  # import androidx.core.app.NotificationManagerCompat
 
 @Suppress("unused", "UNUSED_PARAMETER")
 class Notice(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRuntime), Invokable {
@@ -71,7 +63,7 @@ class Notice(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
                 require(argList.size <= 2) {
                     "Arguments length ${argList.size} shouldn't be greater than 2 for notice with builder"
                 }
-                require(argList.size <= 1 && (arg1.isJsNullish() || arg1 is NativeObject)) {
+                require(arg1.isJsNullish() || arg1 is NativeObject) {
                     "Argument options ${arg1.jsBrief()} must be a JavaScript Object for notice with builder"
                 }
 
@@ -115,7 +107,7 @@ class Notice(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
                 require(argList.size <= 2) {
                     "Arguments length ${argList.size} shouldn't be greater than 2 for notice with content"
                 }
-                require(argList.size <= 1 && (arg1.isJsNullish() || arg1 is NativeObject)) {
+                require(arg1.isJsNullish() || arg1 is NativeObject) {
                     "Argument options ${arg1.jsBrief()} must be a JavaScript Object for notice with content"
                 }
 
@@ -135,7 +127,7 @@ class Notice(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
                 require(argList.size <= 3) {
                     "Arguments length ${argList.size} shouldn't be greater than 3 for notice with title and content"
                 }
-                require(argList.size <= 2 && (arg2.isJsNullish() || arg2 is NativeObject)) {
+                require(arg2.isJsNullish() || arg2 is NativeObject) {
                     "Argument options ${arg2.jsBrief()} must be a JavaScript Object for notice with title and content"
                 }
 
@@ -219,7 +211,7 @@ class Notice(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRunti
         }
     }
 
-    companion object {
+    companion object : ArgumentGuards() {
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface

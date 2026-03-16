@@ -1,12 +1,10 @@
 package org.autojs.autojs.util
 
 import android.content.Context
-import android.content.Intent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.net.toUri
 import com.afollestad.materialdialogs.DialogAction
 import com.afollestad.materialdialogs.MaterialDialog
-import org.autojs.autojs.app.DialogUtils
+import org.autojs.autojs.util.DialogUtils.showAdaptive
 import org.autojs.autojs.core.pref.Pref
 import org.autojs.autojs.core.pref.Pref.isAutoCheckForUpdatesEnabled
 import org.autojs.autojs.core.pref.Pref.lastNoNewerUpdatesTimestamp
@@ -15,6 +13,7 @@ import org.autojs.autojs.core.pref.Pref.lastUpdatesPostponedTimestamp
 import org.autojs.autojs.network.UpdateChecker
 import org.autojs.autojs.network.UpdateChecker.PromptMode
 import org.autojs.autojs.network.entity.VersionInfo
+import org.autojs.autojs.util.DialogUtils.choiceWidgetThemeColor
 import org.autojs.autojs6.R
 
 /**
@@ -26,45 +25,21 @@ object UpdateUtils {
         Pref.getLinkedHashSet(R.string.key_ignored_updates)
     }
 
-    @JvmStatic
-    fun openUrl(context: Context, url: String) {
-        context.startActivity(
-            Intent(Intent.ACTION_VIEW)
-                .setData(url.toUri())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        )
-    }
-
-    class IntervalChecker {
-
-        private val mMinCheckedIntervalNoNewer: Long = 120 * 60 * 1000
-        private val mMinCheckedIntervalPostponed: Long = 30 * 60 * 1000
-        private val mMinCheckedIntervalAutoChecked: Long = 15 * 1000
-
-        val isBeyondNoNewer: Boolean
-            get() {
-                val now = System.currentTimeMillis()
-                val lastNoNewer = lastNoNewerUpdatesTimestamp
-                return now - lastNoNewer > mMinCheckedIntervalNoNewer
-            }
-        val isBeyondPostponed: Boolean
-            get() {
-                val now = System.currentTimeMillis()
-                val lastPostponed = lastUpdatesPostponedTimestamp
-                return now - lastPostponed > mMinCheckedIntervalPostponed
-            }
-        val isBeyondAutoChecked: Boolean
-            get() {
-                val now = System.currentTimeMillis()
-                val lastAutoChecked = lastUpdatesAutoCheckedTimestamp
-                return now - lastAutoChecked > mMinCheckedIntervalAutoChecked
-            }
-
-    }
-
     fun manageIgnoredUpdates(context: Context) {
         MaterialDialog.Builder(context)
             .title(R.string.text_ignored_updates)
+            .options(
+                listOf(
+                    MaterialDialog.OptionMenuItemSpec(context.getString(R.string.dialog_button_details)) {
+                        MaterialDialog.Builder(context)
+                            .title(R.string.text_details)
+                            .content(R.string.description_manage_ignored_updates_preference)
+                            .positiveText(R.string.dialog_button_dismiss)
+                            .positiveColorRes(R.color.dialog_button_default)
+                            .showAdaptive()
+                    },
+                ),
+            )
             .content(R.string.text_no_ignored_updates)
             .items(ignoredVersions)
             .itemsLongCallback { dialog, _, _, text ->
@@ -92,6 +67,7 @@ object UpdateUtils {
                     .autoDismiss(false)
                     .show()
             }
+            .choiceWidgetThemeColor()
             .neutralText(R.string.dialog_button_clear_items)
             .neutralColorRes(R.color.dialog_button_warn)
             .onNeutral { dialogParent, _ ->
@@ -112,7 +88,7 @@ object UpdateUtils {
                         }
                         ViewUtils.showSnack(dialogParent.view, R.string.text_all_items_cleared)
                     }
-                    .show()
+                    .showAdaptive()
             }
             .positiveText(R.string.dialog_button_dismiss)
             .positiveColorRes(R.color.dialog_button_default)
@@ -123,7 +99,7 @@ object UpdateUtils {
                 DialogUtils.toggleContentViewByItems(it)
                 DialogUtils.toggleActionButtonAbilityByItems(it, DialogAction.NEUTRAL)
             }
-            .show()
+            .showAdaptive()
     }
 
     private fun showRemoveIgnoredVersionPrompt(context: Context, dialogHoldingItems: MaterialDialog, dialogPromptParent: MaterialDialog?, text: CharSequence) {
@@ -140,7 +116,7 @@ object UpdateUtils {
                 DialogUtils.toggleContentViewByItems(dialogHoldingItems)
                 dialogPromptParent?.dismiss()
             }
-            .show()
+            .showAdaptive()
     }
 
     @JvmStatic
@@ -167,15 +143,47 @@ object UpdateUtils {
     @JvmStatic
     @JvmOverloads
     fun autoCheckForUpdatesIfNeededWithSnackbar(activity: AppCompatActivity, snackbarViewIdRes: Int = android.R.id.content) {
-        if (isAutoCheckForUpdatesEnabled) {
-            val checker = IntervalChecker()
-            if (checker.isBeyondNoNewer && checker.isBeyondPostponed && checker.isBeyondAutoChecked) {
-                UpdateChecker.Builder(activity.findViewById(snackbarViewIdRes))
-                    .setPromptMode(PromptMode.SNACKBAR)
-                    .build().checkNow()
-                Pref.refreshLastUpdatesAutoCheckedTimestamp()
+        if (!isAutoCheckForUpdatesEnabled) return
+
+        val checker = IntervalChecker()
+        if (!checker.isBeyondNoNewer || !checker.isBeyondPostponed || !checker.isBeyondAutoChecked) return
+
+        UpdateChecker.Builder(activity.findViewById(snackbarViewIdRes))
+            .setPromptMode(PromptMode.SNACKBAR)
+            .setGitHubMainBranch("master")
+            .build()
+            .checkNow()
+
+        Pref.refreshLastUpdatesAutoCheckedTimestamp()
+    }
+
+    private class IntervalChecker {
+
+        private val mMinCheckedIntervalNoNewer: Long = 120 * 60 * 1000
+        private val mMinCheckedIntervalPostponed: Long = 30 * 60 * 1000
+        private val mMinCheckedIntervalAutoChecked: Long = 15 * 1000
+
+        val isBeyondNoNewer: Boolean
+            get() {
+                val now = System.currentTimeMillis()
+                val lastNoNewer = lastNoNewerUpdatesTimestamp
+                return now - lastNoNewer > mMinCheckedIntervalNoNewer
             }
-        }
+
+        val isBeyondPostponed: Boolean
+            get() {
+                val now = System.currentTimeMillis()
+                val lastPostponed = lastUpdatesPostponedTimestamp
+                return now - lastPostponed > mMinCheckedIntervalPostponed
+            }
+
+        val isBeyondAutoChecked: Boolean
+            get() {
+                val now = System.currentTimeMillis()
+                val lastAutoChecked = lastUpdatesAutoCheckedTimestamp
+                return now - lastAutoChecked > mMinCheckedIntervalAutoChecked
+            }
+
     }
 
 }

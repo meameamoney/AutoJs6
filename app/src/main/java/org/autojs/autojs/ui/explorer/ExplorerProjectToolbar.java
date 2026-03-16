@@ -1,19 +1,17 @@
 package org.autojs.autojs.ui.explorer;
 
-import static org.autojs.autojs.util.ViewUtils.showToast;
-
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.util.AttributeSet;
 import android.view.LayoutInflater;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
-
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.LinearLayoutCompat;
 import androidx.cardview.widget.CardView;
-
+import androidx.core.widget.ImageViewCompat;
 import org.autojs.autojs.AutoJs;
 import org.autojs.autojs.model.explorer.ExplorerChangeEvent;
 import org.autojs.autojs.model.explorer.ExplorerItem;
@@ -23,9 +21,14 @@ import org.autojs.autojs.project.ProjectConfig;
 import org.autojs.autojs.project.ProjectLauncher;
 import org.autojs.autojs.ui.project.BuildActivity;
 import org.autojs.autojs.ui.project.ProjectConfigActivity;
+import org.autojs.autojs.util.IntentUtils;
 import org.autojs.autojs6.R;
 import org.autojs.autojs6.databinding.ExplorerProjectToolbarBinding;
 import org.greenrobot.eventbus.Subscribe;
+
+import java.util.List;
+
+import static org.autojs.autojs.util.ViewUtils.showToast;
 
 /**
  * Modified by SuperMonster003 as of May 26, 2022.
@@ -40,6 +43,10 @@ public class ExplorerProjectToolbar extends CardView {
     TextView mProjectName;
 
     private OnOperateListener mOnOperateListener;
+
+    // Unify action icon tint to match day/night theme, especially for overlay dialogs.
+    // zh-CN: 统一操作图标着色以匹配日/夜主题, 尤其用于 overlay 对话框场景.
+    ColorStateList mActionIconTint = ColorStateList.valueOf(getContext().getColor(R.color.project_toolbar_button));
 
     public ExplorerProjectToolbar(Context context) {
         super(context);
@@ -61,9 +68,18 @@ public class ExplorerProjectToolbar extends CardView {
         binding = ExplorerProjectToolbarBinding.inflate(LayoutInflater.from(getContext()), this, true);
 
         mProjectName = binding.projectName;
-        binding.projectRun.setOnClickListener(v -> run());
-        binding.projectBuild.setOnClickListener(v -> build());
-        binding.projectEdit.setOnClickListener(v -> edit());
+
+        ImageView projectRun = binding.projectRun;
+        ImageView projectBuild = binding.projectBuild;
+        ImageView projectEdit = binding.projectEdit;
+
+        projectRun.setOnClickListener(v -> run());
+        projectBuild.setOnClickListener(v -> build());
+        projectEdit.setOnClickListener(v -> edit());
+
+        List.of(projectRun, projectBuild, projectEdit).forEach(imageView -> {
+            ImageViewCompat.setImageTintList(imageView, mActionIconTint);
+        });
 
         this.setOnClickListener(v -> edit());
     }
@@ -124,17 +140,17 @@ public class ExplorerProjectToolbar extends CardView {
             return;
         }
         ExplorerItem item = event.getItem();
-        if ((event.getAction() == ExplorerChangeEvent.ALL)
-                || (item != null && mDirectory.getPath().equals(item.getPath()))) {
+        if (event.getAction() == ExplorerChangeEvent.ALL) {
+            refresh();
+        } else if (item != null && mDirectory.getPath().equals(item.getPath())) {
             refresh();
         }
     }
 
     void edit() {
         Intent intent = new Intent(getContext(), ProjectConfigActivity.class)
-                .putExtra(ProjectConfigActivity.EXTRA_DIRECTORY, mDirectory.getPath())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        getContext().startActivity(intent);
+                .putExtra(ProjectConfigActivity.EXTRA_DIRECTORY, mDirectory.getPath());
+        IntentUtils.startSafely(intent, getContext());
     }
 
     public void setRunnableOnly(boolean b) {

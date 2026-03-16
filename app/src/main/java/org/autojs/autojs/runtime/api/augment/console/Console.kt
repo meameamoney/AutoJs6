@@ -7,19 +7,20 @@ import org.apache.log4j.LogManager
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
 import org.autojs.autojs.core.console.ConsoleImpl
 import org.autojs.autojs.core.console.ConsoleImpl.Companion.DEFAULT_EXIT_ON_CLOSE_TIMEOUT
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.FlexibleArray
-import org.autojs.autojs.extension.ScriptableExtensions.hasProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
-import org.autojs.autojs.extension.ScriptableObjectExtensions.inquire
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component1
+import org.autojs.autojs.rhino.ArgumentGuards.Companion.component2
 import org.autojs.autojs.rhino.ProxyObject
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.hasProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableObjectExtensions.inquire
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.augment.AugmentableProxy
 import org.autojs.autojs.runtime.api.augment.s13n.S13n
 import org.autojs.autojs.runtime.api.augment.util.Util
 import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
-import org.autojs.autojs.util.ColorUtils
 import org.autojs.autojs.util.ConsoleUtils
 import org.autojs.autojs.util.DisplayUtils
 import org.autojs.autojs.util.RhinoUtils.NOT_CONSTRUCTABLE
@@ -40,10 +41,16 @@ import org.autojs.autojs.util.RhinoUtils.withRhinoContext
 import org.autojs.autojs.util.StringUtils.lowercaseFirstChar
 import org.autojs.autojs.util.StringUtils.uppercaseFirstChar
 import org.autojs.autojs6.R
-import org.mozilla.javascript.*
+import org.mozilla.javascript.BaseFunction
+import org.mozilla.javascript.Context
+import org.mozilla.javascript.NativeArray
+import org.mozilla.javascript.NativeError
+import org.mozilla.javascript.NativeObject
+import org.mozilla.javascript.ScriptableObject
+import org.mozilla.javascript.Undefined
 
 @Suppress("unused", "UNUSED_PARAMETER")
-class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
+class Console(private val scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
 
     private val mRtConsole = scriptRuntime.console
     private val mTopLevelScope = scriptRuntime.topLevelScope
@@ -130,7 +137,7 @@ class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
         ::launch.name to "launchConsole",
     )
 
-    private fun getStackTrace() = withRhinoContext { cx ->
+    private fun getStackTrace() = withRhinoContext(scriptRuntime) { cx ->
         newNativeObject().also { o ->
             val globalErrorObject = mTopLevelScope.prop(NativeError.ERROR_TAG) as ScriptableObject
             NativeError.js_captureStackTrace(
@@ -148,7 +155,7 @@ class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
         }.prop(NativeError.STACK_TAG)
     }
 
-    companion object : FlexibleArray() {
+    companion object : ArgumentGuards() {
 
         private const val FUNC_NAME_TRACE = "trace"
 
@@ -213,51 +220,51 @@ class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun input(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
-            val s = "${lowercaseFirstChar(Console::class.java.simpleName)}.${::input.name}"
+            val s = "${Console::class.java.simpleName.lowercaseFirstChar()}.${::input.name}"
             throw RuntimeException(globalContext.getString(R.string.error_abandoned_method, s))
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun rawInput(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
-            val s = "${lowercaseFirstChar(Console::class.java.simpleName)}.${::rawInput.name}"
+            val s = "${Console::class.java.simpleName.lowercaseFirstChar()}.${::rawInput.name}"
             throw RuntimeException(globalContext.getString(R.string.error_abandoned_method, s))
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
-        fun log(scriptRuntime: ScriptRuntime, args: Array<out Any?>) = unwrapArguments(args) {
-            scriptRuntime.console.log(Util.formatRhino(*it))
+        fun log(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
+            return scriptRuntime.console.log(Util.formatRhino(*args))
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
-        fun verbose(scriptRuntime: ScriptRuntime, args: Array<out Any?>) = unwrapArguments(args) {
-            scriptRuntime.console.verbose(Util.formatRhino(*it))
+        fun verbose(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
+            return scriptRuntime.console.verbose(Util.formatRhino(*args))
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
-        fun info(scriptRuntime: ScriptRuntime, args: Array<out Any?>) = unwrapArguments(args) {
-            scriptRuntime.console.info(Util.formatRhino(*it))
+        fun info(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
+            return scriptRuntime.console.info(Util.formatRhino(*args))
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
-        fun warn(scriptRuntime: ScriptRuntime, args: Array<out Any?>) = unwrapArguments(args) {
-            scriptRuntime.console.warn(Util.formatRhino(*it))
+        fun warn(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
+            return scriptRuntime.console.warn(Util.formatRhino(*args))
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
-        fun error(scriptRuntime: ScriptRuntime, args: Array<out Any?>) = unwrapArguments(args) {
-            scriptRuntime.console.error(Util.formatRhino(*it))
+        fun error(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
+            return scriptRuntime.console.error(Util.formatRhino(*args))
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
-        fun print(scriptRuntime: ScriptRuntime, args: Array<out Any?>) = unwrapArguments(args) {
-            scriptRuntime.console.print(Log.DEBUG, Util.formatRhino(*it))
+        fun print(scriptRuntime: ScriptRuntime, args: Array<out Any?>) {
+            return scriptRuntime.console.print(Log.DEBUG, Util.formatRhino(*args))
         }
 
         @JvmStatic
@@ -304,11 +311,11 @@ class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
                 val fName = listOf(
                     when {
                         Regex("^set[A-Z].*").containsMatchIn(key) -> key
-                        else -> "set${uppercaseFirstChar(key)}"
+                        else -> "set${key.uppercaseFirstChar()}"
                     },
                     when {
                         Regex("^is[A-Z].*").containsMatchIn(key) -> key
-                        else -> "is${uppercaseFirstChar(key)}"
+                        else -> "is${key.uppercaseFirstChar()}"
                     },
                 ).find { name ->
                     configurator::class.java.methods.any { method -> method.name == name }
@@ -380,21 +387,21 @@ class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun setTitleBackgroundTint(scriptRuntime: ScriptRuntime, args: Array<out Any?>): ProxyObject = ensureArgumentsOnlyOne(args) {
-            scriptRuntime.console.setTitleBackgroundTint(S13n.color(arrayOf(it)))
+            scriptRuntime.console.setTitleBackgroundTint(it?.let { S13n.color(arrayOf(it)) })
             scriptRuntime.consoleProxyObject
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun setTitleBackgroundAlpha(scriptRuntime: ScriptRuntime, args: Array<out Any?>): ProxyObject = ensureArgumentsOnlyOne(args) {
-            scriptRuntime.console.setTitleBackgroundAlpha(ColorUtils.toUnit8(coerceNumber(it, 1.0), true))
+            scriptRuntime.console.setTitleBackgroundAlpha(coerceNumber(it, 1.0))
             scriptRuntime.consoleProxyObject
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun setTitleIconsTint(scriptRuntime: ScriptRuntime, args: Array<out Any?>): ProxyObject = ensureArgumentsOnlyOne(args) {
-            scriptRuntime.console.setTitleIconsTint(S13n.color(arrayOf(it)))
+            scriptRuntime.console.setTitleIconsTint(it?.let { S13n.color(arrayOf(it)) })
             scriptRuntime.consoleProxyObject
         }
 
@@ -448,14 +455,14 @@ class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun setContentBackgroundTint(scriptRuntime: ScriptRuntime, args: Array<out Any?>): ProxyObject = ensureArgumentsOnlyOne(args) {
-            scriptRuntime.console.setContentBackgroundTint(S13n.color(arrayOf(it)))
+            scriptRuntime.console.setContentBackgroundTint(it?.let { S13n.color(arrayOf(it)) })
             scriptRuntime.consoleProxyObject
         }
 
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun setContentBackgroundAlpha(scriptRuntime: ScriptRuntime, args: Array<out Any?>): ProxyObject = ensureArgumentsOnlyOne(args) {
-            scriptRuntime.console.setContentBackgroundAlpha(ColorUtils.toUnit8(coerceNumber(it, 1.0), true))
+            scriptRuntime.console.setContentBackgroundAlpha(coerceNumber(it, 1.0))
             scriptRuntime.consoleProxyObject
         }
 
@@ -490,7 +497,7 @@ class Console(scriptRuntime: ScriptRuntime) : AugmentableProxy(scriptRuntime) {
         @JvmStatic
         @RhinoRuntimeFunctionInterface
         fun setBackgroundAlpha(scriptRuntime: ScriptRuntime, args: Array<out Any?>): ProxyObject = ensureArgumentsOnlyOne(args) {
-            scriptRuntime.console.setBackgroundAlpha(ColorUtils.toUnit8(coerceNumber(it, 1.0), true))
+            scriptRuntime.console.setBackgroundAlpha(coerceNumber(it, 1.0))
             scriptRuntime.consoleProxyObject
         }
 

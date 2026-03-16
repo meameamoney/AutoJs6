@@ -8,16 +8,16 @@
   <p>{{ text_autojs6_synopsis }}</p>
 
   <p>
-    <a href="http://download.autojs6.com"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/SuperMonster003/AutoJs6"/></a>
-    <a href="http://issues.autojs6.com"><img alt="GitHub closed issues" src="https://img.shields.io/github/issues/SuperMonster003/AutoJs6?color=A24232"/></a>
-    <a href="http://commit.autojs6.com/99a1d8490fac5b6d55f6f183db59ad833a2064ed"><img alt="Created" src="https://img.shields.io/date/1636632233?color=2e7d32&label=created"/></a>
+    <a href="http://download.autojs6.com"><img alt="GitHub release (latest by date)" src="https://img.shields.io/github/v/release/SuperMonster003/AutoJs6?label=Release"/></a>
+    <a href="http://issues.autojs6.com"><img alt="GitHub closed issues" src="https://img.shields.io/github/issues/SuperMonster003/AutoJs6?color=A24232&label=Issues"/></a>
+    <a href="http://commit.autojs6.com/99a1d8490fac5b6d55f6f183db59ad833a2064ed"><img alt="Created" src="https://img.shields.io/date/1636632233?color=2e7d32&label=Created"/></a>
     <br>
-    <a href="https://github.com/mozilla/rhino"><img alt="Rhino" src="https://img.shields.io/badge/rhino-1.8.1--SNAPSHOT-795548"/></a>
-    <a href="https://developer.android.com/studio/archive"><img alt="Android Studio" src="https://img.shields.io/badge/android%20studio-2022.1+-B64FC8"/></a>
+    <a href="https://developer.android.com/studio/archive"><img alt="Android Studio" src="https://img.shields.io/badge/Android%20Studio-2023.3+-B64FC8"/></a>
+    <a href="https://www.jetbrains.com/idea/download/other.html"><img alt="IntelliJ IDEA" src="https://img.shields.io/badge/IntelliJ%20IDEA-2023.3+-EE4677"/></a>
     <br>
-    <a href="https://www.codefactor.io/repository/github/SuperMonster003/AutoJs6"><img alt="CodeFactor Grade" src="https://www.codefactor.io/repository/github/SuperMonster003/AutoJs6/badge"/></a>
-    <a href="https://www.jetbrains.com/?from=AutoJs6"><img alt="JetBrains supporter" src="https://img.shields.io/badge/supporter-JetBrains-ee4677"/></a>
-    <a href="http://project.autojs6.com/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/SuperMonster003/AutoJs6?color=534BAE"/></a>
+    <a href="https://github.com/mozilla/rhino"><img alt="Rhino" src="https://img.shields.io/badge/Rhino-2.0.0--SNAPSHOT-795548"/></a>
+    <a href="https://www.jetbrains.com/?from=AutoJs6"><img alt="JetBrains supporter" src="https://img.shields.io/badge/Supporter-JetBrains-AA2786"/></a>
+    <a href="http://project.autojs6.com/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/SuperMonster003/AutoJs6?color=534BAE&label=License"/></a>
   </p>
 </div>
 
@@ -45,21 +45,30 @@
 
 {{ p_introduction_related_autojs_table_announce }}:
 
-| <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_project }}</span> |                                                             <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_app_name }}</span>                                                              | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_developer }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_development_start_date }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_development_end_date }}</span> |
-|:------------------------------------------------------------------------------------------------------------------:|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|:--------------------------------------------------------------------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------------------------:|:-------------------------------------------------------------------------------------------------------------------------------:|
-|     <span style="word-break:keep-all;white-space:nowrap">[Auto.js](https://github.com/hyb1996/Auto.js)</span>      |    <span style="word-break:keep-all;white-space:nowrap">[Auto.js](https://github.com/TonyJiangWJ/Auto.js/commit/268ec8895bbfa28fc7715154eb15b1c1eaaefd14#diff-5e01f7d37a66e4ca03deefc205d8e7008661cdd0284a05aaba1858e6b7bf9103R2)</span>     |          <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span>           |                             <span style="word-break:keep-all;white-space:nowrap">`2017/01/27`</span>                              |                            <span style="word-break:keep-all;white-space:nowrap">`2020/03/13`</span>                             |
-|                     <span style="word-break:keep-all;white-space:nowrap">Auto.js Pro 7</span>                      |                                                                                     <span style="word-break:keep-all;white-space:nowrap">Auto.js</span>                                                                                      |          <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span>           |                             <span style="word-break:keep-all;white-space:nowrap">`2019/03/13`</span>                              |                            <span style="word-break:keep-all;white-space:nowrap">`2019/07/08`</span>                             |
-|                     <span style="word-break:keep-all;white-space:nowrap">Auto.js Pro 8</span>                      |                                                                                    <span style="word-break:keep-all;white-space:nowrap">AutoJsPro</span>                                                                                     |          <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span>           |                             <span style="word-break:keep-all;white-space:nowrap">`2019/10/13`</span>                              |                            <span style="word-break:keep-all;white-space:nowrap">`2021/07/24`</span>                             |
-|   <span style="word-break:keep-all;white-space:nowrap">[Auto.js](https://github.com/TonyJiangWJ/Auto.js)</span>    | <span style="word-break:keep-all;white-space:nowrap">[Auto.js&#160;M](https://github.com/TonyJiangWJ/Auto.js/commit/268ec8895bbfa28fc7715154eb15b1c1eaaefd14#diff-5e01f7d37a66e4ca03deefc205d8e7008661cdd0284a05aaba1858e6b7bf9103R2)</span> |      <span style="word-break:keep-all;white-space:nowrap">[TonyJiangWJ](https://github.com/TonyJiangWJ)</span>       |                             <span style="word-break:keep-all;white-space:nowrap">`2019/11/21`</span>                              |                                  <span style="word-break:keep-all;white-space:nowrap">-</span>                                  |
-|      <span style="word-break:keep-all;white-space:nowrap">[AutoX](https://github.com/kkevsekk1/AutoX)</span>       |                 <span style="white-space:pre">[Autox.js](https://github.com/kkevsekk1/AutoX/commit/8143e4ed893d4af05d22aa791b83a962f9959873#diff-5e01f7d37a66e4ca03deefc205d8e7008661cdd0284a05aaba1858e6b7bf9103R2)</span>                  |        <span style="word-break:keep-all;white-space:nowrap">[kkevsekk1](https://github.com/kkevsekk1)</span>         |                             <span style="word-break:keep-all;white-space:nowrap">`2020/07/24`</span>                              |                                  <span style="word-break:keep-all;white-space:nowrap">-</span>                                  |
-|        <span style="word-break:keep-all;white-space:nowrap">[Auto.js Pro 9](https://pro.autojs.org/)</span>        |                                                                                    <span style="word-break:keep-all;white-space:nowrap">AutoJsPro</span>                                                                                     |          <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span>           |                             <span style="word-break:keep-all;white-space:nowrap">`2021/03/28`</span>                              |                            <span style="word-break:keep-all;white-space:nowrap">`2023/02/09`</span>                             |
-| <span style="word-break:keep-all;white-space:nowrap">[AutoJs6](https://github.com/SuperMonster003/AutoJs6)</span>  |  <span style="word-break:keep-all;white-space:nowrap">[AutoJs6](https://github.com/SuperMonster003/AutoJs6/commit/a8ce1b9acb541e9736c33134be3194c3148a15a3#diff-833a46a97033e77558372a2dce103fd6fee29aaaa899f610022a7aece592ee7bR27)</span>  |  <span style="word-break:keep-all;white-space:nowrap">[SuperMonster003](https://github.com/SuperMonster003)</span>   |                             <span style="word-break:keep-all;white-space:nowrap">`2021/12/01`</span>                              |                                  <span style="word-break:keep-all;white-space:nowrap">-</span>                                  |
-|      <span style="word-break:keep-all;white-space:nowrap">[AutoX](https://github.com/kkevsekk1/AutoX)</span>       |            <span style="white-space:pre">[Autox.js&#160;v6](https://github.com/kkevsekk1/AutoX/commit/8b6776cff8b0fca4be4a52719b7d7d07c0a058f3#diff-51a0b488f963eb0be6c6599bf5df497313877cf5bdff3950807373912ac1cdc9R130)</span>             |           <span style="word-break:keep-all;white-space:nowrap">[wilinz](https://github.com/wilinz)</span>            |                             <span style="word-break:keep-all;white-space:nowrap">`2022/05/26`</span>                              |                                  <span style="word-break:keep-all;white-space:nowrap">-</span>                                  |
-|        <span style="word-break:keep-all;white-space:nowrap">[AutoX](https://github.com/aiselp/AutoX)</span>        |              <span style="white-space:pre">[Autox.js&#160;v7](https://github.com/aiselp/AutoX/commit/484491fd5fe12b8203d0b09c181eb0f471c0ea9f#diff-8cff73265af19c059547b76aca8882cbaa3209291406f52df1dafbbc78e80c46R120)</span>              |           <span style="word-break:keep-all;white-space:nowrap">[aiselp](https://github.com/aiselp)</span>            |                             <span style="word-break:keep-all;white-space:nowrap">`2024/04/21`</span>                              |                                  <span style="word-break:keep-all;white-space:nowrap">-</span>                                  |
+| <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_project }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_app_name }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_main_developers }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_development_start_date }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_development_end_date }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_introduction_related_autojs_active_maintenance_phase_with_unit }}</span> |
+|:------:|:------:|:------:|:------:|:------:|:------:|
+| <span style="word-break:keep-all;white-space:nowrap">[Auto.js](https://github.com/hyb1996/Auto.js)</span> | <span style="word-break:keep-all;white-space:nowrap">[Auto.js](https://github.com/TonyJiangWJ/Auto.js/commit/268ec8895bbfa28fc7715154eb15b1c1eaaefd14#diff-5e01f7d37a66e4ca03deefc205d8e7008661cdd0284a05aaba1858e6b7bf9103R2)</span> | <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span> | <span style="word-break:keep-all;white-space:nowrap">`2017/01/27`</span> | <span style="word-break:keep-all;white-space:nowrap">`2020/03/13`</span> | <span style="word-break:keep-all;white-space:nowrap">3.13</span> |
+| <span style="word-break:keep-all;white-space:nowrap">Auto.js Pro 7</span> | <span style="word-break:keep-all;white-space:nowrap">Auto.js</span> | <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span> | <span style="word-break:keep-all;white-space:nowrap">`2019/03/13`</span> | <span style="word-break:keep-all;white-space:nowrap">`2019/07/08`</span> | <span style="word-break:keep-all;white-space:nowrap">0.32</span> |
+| <span style="word-break:keep-all;white-space:nowrap">Auto.js Pro 8</span> | <span style="word-break:keep-all;white-space:nowrap">AutoJsPro</span> | <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span> | <span style="word-break:keep-all;white-space:nowrap">`2019/10/13`</span> | <span style="word-break:keep-all;white-space:nowrap">`2021/07/24`</span> | <span style="word-break:keep-all;white-space:nowrap">1.78</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[Auto.js](https://github.com/TonyJiangWJ/Auto.js)</span> | <span style="word-break:keep-all;white-space:nowrap">[Auto.js&#160;M](https://github.com/TonyJiangWJ/Auto.js/commit/268ec8895bbfa28fc7715154eb15b1c1eaaefd14#diff-5e01f7d37a66e4ca03deefc205d8e7008661cdd0284a05aaba1858e6b7bf9103R2)</span> | <span style="word-break:keep-all;white-space:nowrap">[TonyJiangWJ](https://github.com/TonyJiangWJ)</span> | <span style="word-break:keep-all;white-space:nowrap">`2019/11/21`</span> | <span style="word-break:keep-all;white-space:nowrap">-</span> | <span style="word-break:keep-all;white-space:nowrap">< {{ data_active_maintenance_phase_tonyjiangwj_auto_js }} ></span> |
+| <span style="word-break:keep-all;white-space:nowrap">[AutoX](https://github.com/kkevsekk1/AutoX)</span> | <span style="white-space:pre">[Autox.js](https://github.com/kkevsekk1/AutoX/commit/8143e4ed893d4af05d22aa791b83a962f9959873#diff-5e01f7d37a66e4ca03deefc205d8e7008661cdd0284a05aaba1858e6b7bf9103R2)</span> | <span style="word-break:keep-all;white-space:nowrap">[kkevsekk1](https://github.com/kkevsekk1)</span> | <span style="word-break:keep-all;white-space:nowrap">`2020/07/24`</span> | <span style="word-break:keep-all;white-space:nowrap">[ `2025/01/07` ]</span> | <span style="word-break:keep-all;white-space:nowrap">4.46</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[Auto.js Pro 9](https://pro.autojs.org/)</span> | <span style="word-break:keep-all;white-space:nowrap">AutoJsPro</span> | <span style="word-break:keep-all;white-space:nowrap">[hyb1996](https://github.com/hyb1996)</span> | <span style="word-break:keep-all;white-space:nowrap">`2021/03/28`</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/02/09`</span> | <span style="word-break:keep-all;white-space:nowrap">1.87</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[AutoJs6](https://github.com/SuperMonster003/AutoJs6)</span> | <span style="word-break:keep-all;white-space:nowrap">[AutoJs6](https://github.com/SuperMonster003/AutoJs6/commit/a8ce1b9acb541e9736c33134be3194c3148a15a3#diff-833a46a97033e77558372a2dce103fd6fee29aaaa899f610022a7aece592ee7bR27)</span> | <span style="word-break:keep-all;white-space:nowrap">[SuperMonster003](https://github.com/SuperMonster003)</span> | <span style="word-break:keep-all;white-space:nowrap">`2021/12/01`</span> | <span style="word-break:keep-all;white-space:nowrap">-</span> | <span style="word-break:keep-all;white-space:nowrap">< {{ data_active_maintenance_phase_supermonster003_autojs6 }} ></span> |
+| <span style="word-break:keep-all;white-space:nowrap">[autojs4](https://github.com/blackcd318/autojs4)</span> | <span style="word-break:keep-all;white-space:nowrap">Auto.js</span> | <span style="word-break:keep-all;white-space:nowrap">[blackcd318](https://github.com/blackcd318)</span> | <span style="word-break:keep-all;white-space:nowrap">`2021/12/15`</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/07/31`</span> | <span style="word-break:keep-all;white-space:nowrap">1.62</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[AutoX](https://github.com/kkevsekk1/AutoX)</span> | <span style="white-space:pre">[Autox.js&#160;v6](https://github.com/kkevsekk1/AutoX/commit/8b6776cff8b0fca4be4a52719b7d7d07c0a058f3#diff-51a0b488f963eb0be6c6599bf5df497313877cf5bdff3950807373912ac1cdc9R130)</span> | <span style="word-break:keep-all;white-space:nowrap">[wilinz](https://github.com/wilinz) / [aiselp](https://github.com/aiselp)</span> | <span style="word-break:keep-all;white-space:nowrap">`2022/05/26`</span> | <span style="word-break:keep-all;white-space:nowrap">[ `2025/01/07` ]</span> | <span style="word-break:keep-all;white-space:nowrap">2.62</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[openautojs](https://github.com/openautojs/openautojs)</span> | <span style="white-space:pre">[OpenAuto.js](https://github.com/openautojs/openautojs/commit/a11feaad025154de9b453ba70b49e94a6ca8b48a#diff-7d757295fcec3b37c258337e048644c258233d79259152e77baa6d36bb0ec418R2)</span> | <span style="word-break:keep-all;white-space:nowrap">[openautojs](https://github.com/openautojs)</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/02/17`</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/04/16`</span> | <span style="word-break:keep-all;white-space:nowrap">0.16</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[AutoJs4](https://github.com/SuperMonster003/AutoJs4)</span> | <span style="word-break:keep-all;white-space:nowrap">[AutoJs4](https://github.com/SuperMonster003/AutoJs4/commit/8de11699b608be1c1f49f0f10e2e2826f8c77978)</span> | <span style="word-break:keep-all;white-space:nowrap">[SuperMonster003](https://github.com/SuperMonster003)</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/04/11`</span> | <span style="word-break:keep-all;white-space:nowrap">-</span> | <span style="word-break:keep-all;white-space:nowrap">< {{ data_active_maintenance_phase_supermonster003_autojs4 }} ></span> |
+| <span style="word-break:keep-all;white-space:nowrap">[AutoX](https://github.com/aiselp/AutoX)</span> | <span style="white-space:pre">[Autox.js&#160;v7](https://github.com/aiselp/AutoX/commit/484491fd5fe12b8203d0b09c181eb0f471c0ea9f#diff-8cff73265af19c059547b76aca8882cbaa3209291406f52df1dafbbc78e80c46R120)</span> | <span style="word-break:keep-all;white-space:nowrap">[aiselp](https://github.com/aiselp)</span> | <span style="word-break:keep-all;white-space:nowrap">`2024/04/21`</span> | <span style="word-break:keep-all;white-space:nowrap">-</span> | <span style="word-break:keep-all;white-space:nowrap">< {{ data_active_maintenance_phase_aiselp_autox }} ></span> |
+| <span style="word-break:keep-all;white-space:nowrap">[Autoxjs_v6_ozobi](https://github.com/ozobiozobi/Autoxjs_v6_ozobi)</span> | <span style="white-space:pre">[Autox.js&#160;v6_ozobi](https://github.com/ozobiozobi/Autoxjs_v6_ozobi/blob/a651d02246e09cfbbfa87e6eaccf900fab/app/build.gradle.kts#L143)</span> | <span style="word-break:keep-all;white-space:nowrap">[ozobiozobi](https://github.com/ozobiozobi)</span> | <span style="word-break:keep-all;white-space:nowrap">`2024/10/01`</span> | <span style="word-break:keep-all;white-space:nowrap">-</span> | <span style="word-break:keep-all;white-space:nowrap">< {{ data_active_maintenance_phase_ozobiozobi_autox_ozobi }} ></span> |
+| <span style="word-break:keep-all;white-space:nowrap">[AutoX](https://github.com/autox-community/AutoX)</span> | <span style="white-space:pre">[Autox.js&#160;v6](https://github.com/autox-community/AutoX/commit/8b6776cff8b0fca4be4a52719b7d7d07c0a058f3#diff-51a0b488f963eb0be6c6599bf5df497313877cf5bdff3950807373912ac1cdc9R130)</span> | <span style="word-break:keep-all;white-space:nowrap">[autox-community](https://github.com/autox-community)</span> | <span style="word-break:keep-all;white-space:nowrap">`2025/03/30`</span> | <span style="word-break:keep-all;white-space:nowrap">-</span> | <span style="word-break:keep-all;white-space:nowrap">< {{ data_active_maintenance_phase_autox_community_autox }} ></span> |
 
 {{ p_introduction_related_autojs_table_date_is_estimated }}.
 
 {{ p_introduction_related_autojs_table_app_is_free_or_not }}.
+
+{{ p_introduction_related_autojs_table_development_end_date_with_square_brackets }}.
+
+{{ p_introduction_related_autojs_table_active_maintenance_data_with_angle_brackets }}.
 
 ******
 
@@ -118,23 +127,23 @@
 * {{ li_major_changes_vscode_plugin_support }}
 * {{ li_major_changes_rhino_engine_upgrade }}
     * {{ li_rhino_feature_unicode_code_point_escapes_support }}
-       ```javascript
+       ```js
        '\u{1D160}'; /* {{ text_stands_for }} "𝅘𝅥𝅮", {{ text_traditional_method_lowercase }}: '\uD834\uDD60'. */
        ```
     * {{ li_rhino_feature_object_values_support }}
-       ```javascript
+       ```js
        Object.values({name: 'Max', age: 4}); // ['max', 4]
        ```
     * {{ li_rhino_feature_array_includes_support }}
-       ```javascript
+       ```js
        [10, 20, NaN].includes(20); // true
        ```
     * {{ li_rhino_feature_bigint_support }}
-       ```javascript
+       ```ts
        typeof 567n === 'bigint'; // true
        ```
     * {{ li_rhino_feature_template_strings_support }}
-       ```javascript
+       ```js
        `Lucky number: ${(Math.random() * 100).toFixed(0)}`
        ```
     * {{ li_rhino_feature_rhino_engine_new_features }}
@@ -142,13 +151,13 @@
 
 ******
 
-### {{ h3_version_histories }}
+### {{ h3_release_history }}
 
 ******
 
-{{ placeholder_latest_three_version_histories }}
+{{ placeholder_latest_three_release_history }}
 
-##### {{ h5_for_more_version_history }}
+##### {{ h5_for_more_release_history }}
 
 * {{ placeholder_read_more_in_changelog_md }}
 
@@ -168,6 +177,7 @@
 
 - [{{ android_studio_latest_recommended_file_name_of_exe }}]({{ android_studio_latest_recommended_download_address_of_exe }}) ({{ android_studio_latest_recommended_file_size_of_exe }})
 - [{{ android_studio_latest_recommended_file_name_of_zip }}]({{ android_studio_latest_recommended_download_address_of_zip }}) ({{ android_studio_latest_recommended_file_size_of_zip }})
+- [{{ android_studio_latest_recommended_file_name_of_tar }}]({{ android_studio_latest_recommended_download_address_of_tar }}) ({{ android_studio_latest_recommended_file_size_of_tar }})
 
 > {{ bq_annotation_android_studio_release_date_note }}.
 
@@ -371,18 +381,18 @@ autojs6-v6.6.2-arm64-v8a-0f2a9d74.apk
 
 {{ p_contribution_table_thank_all_contributors }}.
 
-|         <span style="word-break:keep-all;white-space:nowrap">{{ table_header_contribution_contributors }}</span>          |                   <span style="word-break:keep-all;white-space:nowrap">{{ table_header_contribution_number_of_commits }}</span>                    | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_contribution_recent_submissions }}</span> |
-|:-------------------------------------------------------------------------------------------------------------------------:|:--------------------------------------------------------------------------------------------------------------------------------------------------:|:--------------------------------------------------------------------------------------------------------------:|
-|             <span style="word-break:keep-all;white-space:nowrap">[wirsnow](https://github.com/wirsnow)</span>             |         <span style="word-break:keep-all;white-space:nowrap">[1](https://github.com/SuperMonster003/AutoJs6/commits?author=wirsnow)</span>         |                    <span style="word-break:keep-all;white-space:nowrap">`2025/05/19`</span>                    |
-|         <span style="word-break:keep-all;white-space:nowrap">[TonyJiangWJ](https://github.com/TonyJiangWJ)</span>         |       <span style="word-break:keep-all;white-space:nowrap">[5](https://github.com/SuperMonster003/AutoJs6/commits?author=TonyJiangWJ)</span>       |                    <span style="word-break:keep-all;white-space:nowrap">`2025/04/24`</span>                    |
-|          <span style="word-break:keep-all;white-space:nowrap">[luckyloogn](https://github.com/luckyloogn)</span>          |       <span style="word-break:keep-all;white-space:nowrap">[3](https://github.com/SuperMonster003/AutoJs6/commits?author=luckyloogn)</span>        |                    <span style="word-break:keep-all;white-space:nowrap">`2025/01/01`</span>                    |
-|                <span style="word-break:keep-all;white-space:nowrap">[kvii](https://github.com/kvii)</span>                |          <span style="word-break:keep-all;white-space:nowrap">[1](https://github.com/SuperMonster003/AutoJs6/commits?author=kvii)</span>           |                    <span style="word-break:keep-all;white-space:nowrap">`2024/10/16`</span>                    |
-|   <span style="word-break:keep-all;white-space:nowrap">[chenguangming](https://github.com/chenguangming) `(Tom)`</span>   | <span style="word-break:keep-all;white-space:nowrap">[2](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+author%3Achenguangming)</span> |                    <span style="word-break:keep-all;white-space:nowrap">`2024/05/14`</span>                    |
-|          <span style="word-break:keep-all;white-space:nowrap">[LZX284](https://github.com/LZX284) `(AI)`</span>           |         <span style="word-break:keep-all;white-space:nowrap">[17](https://github.com/SuperMonster003/AutoJs6/commits?author=LZX284)</span>         |                    <span style="word-break:keep-all;white-space:nowrap">`2023/11/19`</span>                    |
-| <span style="word-break:keep-all;white-space:nowrap">[little&#x2011;alei](https://github.com/little-alei) `(抠脚本人)`</span> |      <span style="word-break:keep-all;white-space:nowrap">[12](https://github.com/SuperMonster003/AutoJs6/commits?author=little-alei)</span>       |                    <span style="word-break:keep-all;white-space:nowrap">`2023/07/12`</span>                    |
-|              <span style="word-break:keep-all;white-space:nowrap">[aiselp](https://github.com/aiselp)</span>              |    <span style="word-break:keep-all;white-space:nowrap">[6](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+author%3Aaiselp)</span>     |                    <span style="word-break:keep-all;white-space:nowrap">`2023/06/14`</span>                    |
-|           <span style="word-break:keep-all;white-space:nowrap">[LYS86](https://github.com/LYS86) `(Lin)`</span>           |          <span style="word-break:keep-all;white-space:nowrap">[2](https://github.com/SuperMonster003/AutoJs6/commits?author=LYS86)</span>          |                    <span style="word-break:keep-all;white-space:nowrap">`2023/06/03`</span>                    |
-
+| <span style="word-break:keep-all;white-space:nowrap">{{ table_header_contribution_contributors }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_contribution_number_of_commits }}</span> | <span style="word-break:keep-all;white-space:nowrap">{{ table_header_contribution_recent_submissions }}</span> |
+|:------:|:------:|:------:|
+| <span style="word-break:keep-all;white-space:nowrap">[Willie169](https://github.com/Willie169)</span> | <span style="word-break:keep-all;white-space:nowrap">[1](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3AWillie169)</span> | <span style="word-break:keep-all;white-space:nowrap">`2026/03/03`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[LYS86](https://github.com/LYS86) `(Lin)`</span> | <span style="word-break:keep-all;white-space:nowrap">[4](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3ALYS86)</span> | <span style="word-break:keep-all;white-space:nowrap">`2025/12/26`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[wirsnow](https://github.com/wirsnow)</span> | <span style="word-break:keep-all;white-space:nowrap">[1](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3Awirsnow)</span> | <span style="word-break:keep-all;white-space:nowrap">`2025/05/19`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[TonyJiangWJ](https://github.com/TonyJiangWJ)</span> | <span style="word-break:keep-all;white-space:nowrap">[4](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3ATonyJiangWJ)</span> | <span style="word-break:keep-all;white-space:nowrap">`2025/04/24`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[luckyloogn](https://github.com/luckyloogn)</span> | <span style="word-break:keep-all;white-space:nowrap">[3](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3Aluckyloogn)</span> | <span style="word-break:keep-all;white-space:nowrap">`2024/12/31`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[kvii](https://github.com/kvii)</span> | <span style="word-break:keep-all;white-space:nowrap">[1](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3Akvii)</span> | <span style="word-break:keep-all;white-space:nowrap">`2024/10/16`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[chenguangming](https://github.com/chenguangming) `(Tom)`</span> | <span style="word-break:keep-all;white-space:nowrap">[2](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3Achenguangming)</span> | <span style="word-break:keep-all;white-space:nowrap">`2024/05/14`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[LZX284](https://github.com/LZX284) `(AI)`</span> | <span style="word-break:keep-all;white-space:nowrap">[7](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3ALZX284)</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/11/15`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[kojoe&#x2011;code](https://github.com/kojoe-code) `(抠脚本人)`</span> | <span style="word-break:keep-all;white-space:nowrap">[12](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3Akojoe-code)</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/07/12`</span> |
+| <span style="word-break:keep-all;white-space:nowrap">[aiselp](https://github.com/aiselp)</span> | <span style="word-break:keep-all;white-space:nowrap">[6](https://github.com/SuperMonster003/AutoJs6/pulls?q=is%3Apr+is%3Amerged+author%3Aaiselp)</span> | <span style="word-break:keep-all;white-space:nowrap">`2023/06/14`</span> |
 {{ p_contribution_table_data_updated_on }}.
 
 {{ p_contribution_table_data_entries_sorted_by_recent_submissions }}.
@@ -404,11 +414,12 @@ autojs6-v6.6.2-arm64-v8a-0f2a9d74.apk
         - Translate into other languages
         - Update TypeScript declarations according to section `dependency` if needed
     - $projectDir/.readme/template_readme.md
-        - Update badges like [ android studio / rhino / ... ]
-        - Update contribution section: {{ h3_contribution }}
+        - Update Rhino badge
+        - Update Android Studio and IntelliJ IDEA badges [ link: aj6mdgen ]
+        - Update contribution section: [ h3_contribution ] [ link: aj6scrapers ]
     - $projectDir/.readme/common.json
-        - Update android studio download links and version names
-        - Update contribution section: var_date_contribution_table_data_updated
+        - Update android studio download links and version names [ link: aj6scrapers ]
+        - Update contribution section: var_date_contribution_table_data_updated [ link: aj6scrapers ]
     - $projectDir/.python/generate_markdown.py
         - Re-generate markdown by running the python script [ link: aj6mdgen ]
     - Others

@@ -1,6 +1,6 @@
 package org.autojs.autojs.rhino
 
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
 import org.autojs.autojs.util.RhinoUtils.NOT_CONSTRUCTABLE
 import org.autojs.autojs.util.RhinoUtils.callFunction
 import org.autojs.autojs.util.RhinoUtils.newBaseFunction
@@ -72,6 +72,12 @@ open class ProxyObject() : NativeObject() {
 
         @JvmField
         val PROXY_OBJECT_KEY = "__proxy__"
+
+        @JvmField
+        val AUGMENTED_OBJECT_KEY = "__augmented__"
+
+        @JvmField
+        val AUGMENTED_CUSTOM_TO_STRING_KEY = "__augmented_custom_to_string__"
 
         @JvmField
         val PROXY_SETTER_KEY = "set"

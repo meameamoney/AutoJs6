@@ -13,9 +13,14 @@ import android.text.TextPaint
 import android.util.Log
 import android.util.TypedValue
 import android.view.ActionMode
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
+import androidx.core.view.get
+import androidx.core.view.size
+import com.afollestad.materialdialogs.DialogAction
 import com.afollestad.materialdialogs.MaterialDialog
 import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
@@ -25,29 +30,52 @@ import org.autojs.autojs.app.OnActivityResultDelegate.DelegateHost
 import org.autojs.autojs.core.permission.OnRequestPermissionsResultCallback
 import org.autojs.autojs.core.permission.PermissionRequestProxyActivity
 import org.autojs.autojs.core.permission.RequestPermissionCallbacks
-import org.autojs.autojs.extension.ViewExtensions.setOnTitleViewClickListener
-import org.autojs.autojs.extension.ViewExtensions.titleView
 import org.autojs.autojs.pio.PFiles
-import org.autojs.autojs.storage.file.TmpScriptFiles
+import org.autojs.autojs.storage.file.StableDraftFileHelper
 import org.autojs.autojs.theme.widget.ThemeColorToolbar
 import org.autojs.autojs.ui.BaseActivity
+import org.autojs.autojs.ui.error.ErrorDialogActivity
 import org.autojs.autojs.ui.main.MainActivity
 import org.autojs.autojs.ui.main.scripts.EditableFileInfoDialogManager
+import org.autojs.autojs.util.DialogUtils
+import org.autojs.autojs.util.IntentUtils.startSafely
 import org.autojs.autojs.util.Observers
 import org.autojs.autojs.util.ViewUtils.onceGlobalLayout
 import org.autojs.autojs.util.ViewUtils.setMenuIconsColorByThemeColorLuminance
+import org.autojs.autojs.util.ViewUtils.setOnTitleViewClickListener
+import org.autojs.autojs.util.ViewUtils.titleView
 import org.autojs.autojs6.R
 import org.autojs.autojs6.databinding.ActivityEditBinding
 import java.io.File
-import java.io.IOException
-import androidx.core.view.get
-import androidx.core.view.size
 
 /**
  * Created by Stardust on Jan 29, 2017.
- * Modified by SuperMonster003 as of Jan 21, 2023.
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Feb 15, 2026.
+ * Modified by SuperMonster003 as of Feb 15, 2026.
  */
 open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyActivity {
+
+    private var mReadOnly: Boolean = false
+
+    private val mOnBackPressedCallback = object : OnBackPressedCallback(true) {
+
+        // override fun onBackPressed() {
+        //     if (!mEditorView.onBackPressed()) {
+        //         super.onBackPressed()
+        //     }
+        // }
+
+        override fun handleOnBackPressed() {
+            if (mEditorView.onBackPressed()) {
+                return
+            }
+            mEditorView.cancelLargeFileLoading()
+
+            isEnabled = false
+            onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
+        }
+    }
 
     override val handleContentViewFromHorizontalNavigationBarAutomatically = false
 
@@ -60,27 +88,75 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
     private val mRequestPermissionCallbacks = RequestPermissionCallbacks()
     private var mNewTask = false
 
+    private lateinit var draftFileHelper: StableDraftFileHelper
+
     @SuppressLint("CheckResult")
     override fun onCreate(savedInstanceState: Bundle?) {
+
         super.onCreate(savedInstanceState)
 
-        val binding = ActivityEditBinding.inflate(layoutInflater).also { setContentView(it.root) }
-        mToolbar = findViewById<ThemeColorToolbar>(R.id.toolbar).apply {
-            setTitleTextAppearance(this@EditActivity, R.style.TextAppearanceEditorTitle)
-            setOnTitleViewClickListener {
-                EditableFileInfoDialogManager.showEditableFileInfoDialog(this@EditActivity, mEditorView.uri.path?.let { File(it) }) {
+        val binding = ActivityEditBinding.inflate(layoutInflater).also {
+            setContentView(it.root)
+        }
+        val readOnly = intent.getBooleanExtra(EditorView.EXTRA_READ_ONLY, false).also {
+            mReadOnly = it
+        }
+        val toolbar = findViewById<ThemeColorToolbar>(R.id.toolbar).also {
+            mToolbar = it
+        }
+        val editorView = binding.editorView.also {
+            mEditorView = it
+        }
+        EditorMenu(editorView, readOnly).also {
+            mEditorMenu = it
+        }
+
+        // Restore draft as early as possible to avoid being overwritten by async file loading.
+        // We intentionally do this in onCreate(), not in onRestoreInstanceState(),
+        // because handleIntent() may start async loading and call setInitialText() later.
+        //
+        // zh-CN:
+        // 尽可能早地恢复草稿, 避免被异步文件加载覆盖.
+        // 我们刻意在 onCreate() 中恢复, 而不是在 onRestoreInstanceState() 中恢复,
+        // 因为 handleIntent() 可能启动异步加载并在稍后调用 setInitialText().
+        savedInstanceState?.getString("text")?.let { draftText ->
+            mEditorView.restoreDraftTextForThisSession(draftText)
+        } ?: savedInstanceState?.getString("path")?.let { path ->
+            Observable.just(path)
+                .observeOn(Schedulers.io())
+                .map { PFiles.read(it) }
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe({ draftText ->
+                    mEditorView.restoreDraftTextForThisSession(draftText)
+                }, Throwable::printStackTrace)
+        }
+
+        // Use a stable key from intent instead of editorView.uri (which is not set yet here).
+        // zh-CN: 使用 intent 中的稳定 key, 避免此处 editorView.uri 尚未赋值导致 key 为 null.
+        val draftKeyPath = intent.getStringExtra(EditorView.EXTRA_PATH) ?: intent.data?.path
+
+        StableDraftFileHelper(this, draftKeyPath).also {
+            draftFileHelper = it
+        }
+        (intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0).also {
+            mNewTask = it
+        }
+
+        toolbar.setTitleTextAppearance(this, R.style.TextAppearanceEditorTitle)
+        toolbar.setOnTitleViewClickListener {
+            val path = mEditorView.uri?.path
+            if (path != null) {
+                EditableFileInfoDialogManager.showEditableFileInfoDialog(this, File(path)) {
                     mEditorView.editor.text
                 }
             }
         }
-        mEditorView = binding.editorView.apply {
-            handleIntent(intent)
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(Observers.emptyConsumer()) { ex: Throwable -> onLoadFileError(ex.message) }
-        }
-        mEditorMenu = EditorMenu(mEditorView)
-        mNewTask = intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0
-        setUpToolbar()
+        editorView.handleIntent(intent)
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(Observers.emptyConsumer()) { ex: Throwable -> onLoadFileError(ex.message) }
+
+        setToolbarAsBack(editorView.name)
+        onBackPressedDispatcher.addCallback(this, mOnBackPressedCallback)
     }
 
     private fun onLoadFileError(message: String?) {
@@ -94,10 +170,6 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
             .show()
     }
 
-    private fun setUpToolbar() {
-        setToolbarAsBack(mEditorView.name)
-    }
-
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_editor, menu)
         mToolbar?.let { toolbar ->
@@ -105,6 +177,11 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
             toolbar.onceGlobalLayout { toolbar.titleView?.adjustTitleTextView() }
         }
         return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        mEditorMenu.prepareOptionsMenu(menu)
+        return super.onPrepareOptionsMenu(menu)
     }
 
     private fun TextView.adjustTitleTextView() = this.post {
@@ -224,7 +301,9 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
         val menu = mode.menu
         val item = menu[menu.size - 1]
 
-        addMenuItem(menu, item.groupId, R.id.action_delete_line, 10000, R.string.text_delete_line) { mEditorMenu.deleteLine() }
+        if (!mReadOnly) {
+            addMenuItem(menu, item.groupId, R.id.action_delete_line, 10000, R.string.text_delete_line) { mEditorMenu.deleteLine() }
+        }
         addMenuItem(menu, item.groupId, R.id.action_copy_line, 20000, R.string.text_copy_line) { mEditorMenu.copyLine() }
 
         super.onActionModeStarted(mode)
@@ -248,15 +327,8 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
         }
     }
 
-    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
-    override fun onBackPressed() {
-        if (!mEditorView.onBackPressed()) {
-            super.onBackPressed()
-        }
-    }
-
     override fun finish() {
-        if (mEditorView.isTextChanged) {
+        if (mEditorView.saveStickyDirty) {
             showExitConfirmDialog()
         } else {
             finishAndRemoveFromRecents()
@@ -271,21 +343,73 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
         }
     }
 
+    @SuppressLint("CheckResult")
     private fun showExitConfirmDialog() {
-        MaterialDialog.Builder(this)
-            .title(R.string.text_prompt)
-            .content(R.string.edit_exit_without_save_warn)
-            .neutralText(R.string.dialog_button_back)
-            .negativeText(R.string.text_exit_directly)
-            .negativeColorRes(R.color.dialog_button_caution)
-            .positiveText(R.string.text_save_and_exit)
-            .positiveColorRes(R.color.dialog_button_warn)
-            .onNegative { _, _ -> finishAndRemoveFromRecents() }
-            .onPositive { _, _ ->
-                mEditorView.saveFile()
-                finishAndRemoveFromRecents()
-            }
-            .show()
+        DialogUtils.buildAndShowAdaptive {
+            MaterialDialog.Builder(this)
+                .title(R.string.text_prompt)
+                .content(R.string.edit_exit_without_save_warn)
+                .neutralText(R.string.dialog_button_back)
+                .negativeText(R.string.text_exit_directly)
+                .onNeutral { d, _ -> d.dismiss() }
+                .negativeColorRes(R.color.dialog_button_caution)
+                .onNegative { d, _ ->
+                    runCatching { d.dismiss() }
+                    finishAndRemoveFromRecents()
+                }
+                .positiveText(R.string.text_save_and_exit)
+                .positiveColorRes(R.color.dialog_button_warn)
+                .onPositive { d, _ ->
+                    // Save is async, exit only after success.
+                    // zh-CN: 保存是异步的, 保存成功后再退出.
+                    d.apply {
+                        setCancelable(false)
+                        getActionButton(DialogAction.NEUTRAL).apply {
+                            isEnabled = false
+                            setTextColor(getColor(R.color.dialog_button_unavailable))
+                        }
+                        getActionButton(DialogAction.NEGATIVE).apply {
+                            isEnabled = false
+                            setTextColor(getColor(R.color.dialog_button_unavailable))
+                        }
+                        getActionButton(DialogAction.POSITIVE).apply {
+                            isEnabled = false
+                            setTextColor(getColor(R.color.dialog_button_unavailable))
+                        }
+                        contentView?.postDelayed({
+                            contentView?.text = getString(R.string.text_saving)
+                        }, 300)
+                    }
+
+                    mEditorView
+                        .save()
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribe({
+                            // Save succeeded: remove draft for this file.
+                            // zh-CN: 保存成功: 删除该文件对应草稿.
+                            draftFileHelper.deleteDraft()
+
+                            runCatching { d.dismiss() }
+                            finishAndRemoveFromRecents()
+                        }, { e: Throwable ->
+                            // Save failed, keep editor open.
+                            // zh-CN: 保存失败, 保持编辑器不退出.
+                            e.printStackTrace()
+                            runCatching { d.dismiss() }
+                            ErrorDialogActivity.showErrorDialog(this@EditActivity, R.string.error_failed_to_save, e.message)
+                        })
+                }
+                .autoDismiss(false)
+                .build()
+                .apply {
+                    contentView?.apply {
+                        setLineSpacing(0f, 1.2f)
+                        setLines(2)
+                        minLines = 2
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+                }
+        }
     }
 
     override fun onDestroy() {
@@ -304,46 +428,42 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        if (!mEditorView.isTextChanged) {
+
+        // Save draft when content actually differs from baseline OR UI indicates "needs save".
+        // This makes state restore robust against any sticky/menu state glitches.
+        //
+        // zh-CN:
+        // 当内容相对基线确实发生变化, 或 UI 表示 "需要保存" 时, 保存草稿.
+        // 这能使状态恢复不再受 sticky/menu 状态偶发异常的影响.
+        val needDraft = mEditorView.isTextChanged || mEditorView.saveStickyDirty
+        if (!needDraft) {
+            super.onSaveInstanceState(outState)
             return
         }
+
         val text = mEditorView.editor.text
-        if (text.length < 256 * 1024) {
-            outState.putString("text", text)
-        } else {
-            val tmp = saveToTmpFile(text)
-            if (tmp != null) {
-                outState.putString("path", tmp.path)
+        when {
+            text.length < 256 * 1024 -> {
+                Log.d(LOG_TAG, "saveDraftText, length: ${text.length}")
+                outState.putString("text", text)
+            }
+            else -> {
+                Log.d(LOG_TAG, "saveDraftFile, length: ${text.length}")
+
+                // Use stable file key (real script path) to avoid accumulating tmp files.
+                // zh-CN: 使用稳定 key (脚本真实 path) 避免累计 tmp 文件.
+                draftFileHelper.saveDraft(text)?.let { tmp ->
+                    outState.putString("path", tmp.path)
+                }
             }
         }
         super.onSaveInstanceState(outState)
     }
 
-    @SuppressLint("CheckResult")
-    private fun saveToTmpFile(text: String): File? = try {
-        TmpScriptFiles.create(this).also { tmp ->
-            Observable.just(text)
-                .observeOn(Schedulers.io())
-                .subscribe { t: String? -> PFiles.write(tmp, t) }
-        }
-    } catch (e: IOException) {
-        e.printStackTrace()
-        null
-    }
-
-    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
-        super.onRestoreInstanceState(savedInstanceState)
-        savedInstanceState.getString("text")?.let {
-            mEditorView.setRestoredText(it)
-            return
-        }
-        savedInstanceState.getString("path")?.let { path ->
-            Observable.just(path)
-                .observeOn(Schedulers.io())
-                .map { PFiles.read(it) }
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe({ mEditorView.editor.text = it }, Throwable::printStackTrace)
-        }
+    override fun onResume() {
+        super.onResume()
+        mEditorView.syncPrimaryMenuState()
+        runCatching { mEditorView.refreshSymbolsBar() }
     }
 
     override fun addRequestPermissionsCallback(callback: OnRequestPermissionsResultCallback) {
@@ -364,50 +484,62 @@ open class EditActivity : BaseActivity(), DelegateHost, PermissionRequestProxyAc
         private const val LOG_TAG = "EditActivity"
 
         @JvmStatic
-        fun editFile(context: Context, path: String?, newTask: Boolean) {
+        fun editFile(context: Context, path: String?, newTask: Boolean) =
             editFile(context, null, path, newTask)
-        }
 
         @JvmStatic
-        fun editFile(context: Context, uri: Uri?, newTask: Boolean) {
-            runCatching {
-                context.startActivity(newIntent(context).setData(uri))
-            }.getOrElse {
-                context.startActivity(newIntentFallback(context, newTask).setData(uri))
+        fun editFile(context: Context, uri: Uri?, newTask: Boolean) =
+            when {
+                newIntent(context).setData(uri).startSafely(context) -> true
+                newIntentFallback(context, newTask).setData(uri).startSafely(context) -> true
+                else -> false
             }
-        }
 
         @JvmStatic
-        fun editFile(context: Context, name: String?, path: String?, newTask: Boolean) {
-            runCatching {
-                context.startActivity(newIntent(context).apply {
+        fun editFile(context: Context, name: String?, path: String?, newTask: Boolean) =
+            when {
+                newIntent(context).apply {
                     putExtra(EditorView.EXTRA_PATH, path)
                     putExtra(EditorView.EXTRA_NAME, name)
-                })
-            }.getOrElse {
-                context.startActivity(newIntentFallback(context, newTask).apply {
+                }.startSafely(context) -> true
+                newIntentFallback(context, newTask).apply {
                     putExtra(EditorView.EXTRA_PATH, path)
                     putExtra(EditorView.EXTRA_NAME, name)
-                })
+                }.startSafely(context) -> true
+                else -> false
             }
-        }
 
         @JvmStatic
-        fun viewContent(context: Context, name: String?, content: String?, newTask: Boolean) {
-            runCatching {
-                context.startActivity(newIntent(context).apply {
+        fun viewContent(context: Context, name: String?, content: String?, newTask: Boolean) =
+            when {
+                newIntent(context).apply {
                     putExtra(EditorView.EXTRA_CONTENT, content)
                     putExtra(EditorView.EXTRA_NAME, name)
                     putExtra(EditorView.EXTRA_READ_ONLY, true)
-                })
-            }.getOrElse {
-                context.startActivity(newIntentFallback(context, newTask).apply {
+                }.startSafely(context) -> true
+                newIntentFallback(context, newTask).apply {
                     putExtra(EditorView.EXTRA_CONTENT, content)
                     putExtra(EditorView.EXTRA_NAME, name)
                     putExtra(EditorView.EXTRA_READ_ONLY, true)
-                })
+                }.startSafely(context) -> true
+                else -> false
             }
-        }
+
+        @JvmStatic
+        fun viewPath(context: Context, name: String?, path: String?, newTask: Boolean) =
+            when {
+                newIntent(context).apply {
+                    putExtra(EditorView.EXTRA_PATH, path)
+                    putExtra(EditorView.EXTRA_NAME, name)
+                    putExtra(EditorView.EXTRA_READ_ONLY, true)
+                }.startSafely(context) -> true
+                newIntentFallback(context, newTask).apply {
+                    putExtra(EditorView.EXTRA_PATH, path)
+                    putExtra(EditorView.EXTRA_NAME, name)
+                    putExtra(EditorView.EXTRA_READ_ONLY, true)
+                }.startSafely(context) -> true
+                else -> false
+            }
 
         private fun newIntent(context: Context): Intent {
             // @Caution by SuperMonster003 on Sep 11, 2022.

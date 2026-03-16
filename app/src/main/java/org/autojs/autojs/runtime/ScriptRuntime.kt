@@ -3,12 +3,14 @@ package org.autojs.autojs.runtime
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.autojs.autojs.AutoJs
 import org.autojs.autojs.annotation.ScriptInterface
 import org.autojs.autojs.annotation.ScriptVariable
 import org.autojs.autojs.concurrent.VolatileDispose
 import org.autojs.autojs.core.accessibility.AccessibilityBridge
-import org.autojs.autojs.core.accessibility.AccessibilityService
 import org.autojs.autojs.core.accessibility.SimpleActionAutomator
 import org.autojs.autojs.core.accessibility.monitor.CloseableManager
 import org.autojs.autojs.core.activity.ActivityInfoProvider
@@ -16,21 +18,18 @@ import org.autojs.autojs.core.console.GlobalConsole
 import org.autojs.autojs.core.image.capture.ScreenCaptureRequester
 import org.autojs.autojs.core.looper.Loopers
 import org.autojs.autojs.core.pref.Pref
-import org.autojs.autojs.engine.ScriptEngineService
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
-import org.autojs.autojs.extension.ScriptableExtensions.deleteProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
 import org.autojs.autojs.lang.ThreadCompat
 import org.autojs.autojs.pio.PFiles
 import org.autojs.autojs.pio.UncheckedIOException
 import org.autojs.autojs.rhino.AndroidClassLoader
 import org.autojs.autojs.rhino.ProxyObject
 import org.autojs.autojs.rhino.TopLevelScope
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
 import org.autojs.autojs.runtime.api.AbstractShell
 import org.autojs.autojs.runtime.api.AppUtils
 import org.autojs.autojs.runtime.api.ProcessShell
 import org.autojs.autojs.runtime.api.ScreenMetrics
-import org.autojs.autojs.runtime.api.ScriptToast
 import org.autojs.autojs.runtime.api.WrappedShizuku
 import org.autojs.autojs.runtime.api.augment.app.App
 import org.autojs.autojs.runtime.api.augment.autojs.Autojs
@@ -40,10 +39,12 @@ import org.autojs.autojs.runtime.api.augment.automator.RootAutomator
 import org.autojs.autojs.runtime.api.augment.barcode.Barcode
 import org.autojs.autojs.runtime.api.augment.barcode.QrCode
 import org.autojs.autojs.runtime.api.augment.base64.Base64
+import org.autojs.autojs.runtime.api.augment.canvas.Canvas
 import org.autojs.autojs.runtime.api.augment.colors.Color
 import org.autojs.autojs.runtime.api.augment.colors.Colors
 import org.autojs.autojs.runtime.api.augment.console.Console
 import org.autojs.autojs.runtime.api.augment.continuation.Continuation
+import org.autojs.autojs.runtime.api.augment.converter.Converter
 import org.autojs.autojs.runtime.api.augment.cryptyo.Crypto
 import org.autojs.autojs.runtime.api.augment.device.Device
 import org.autojs.autojs.runtime.api.augment.dialogs.Dialogs
@@ -52,6 +53,7 @@ import org.autojs.autojs.runtime.api.augment.events.Events
 import org.autojs.autojs.runtime.api.augment.events.Keys
 import org.autojs.autojs.runtime.api.augment.files.Files
 import org.autojs.autojs.runtime.api.augment.floaty.Floaty
+import org.autojs.autojs.runtime.api.augment.formatter.Formatter
 import org.autojs.autojs.runtime.api.augment.global.Global
 import org.autojs.autojs.runtime.api.augment.global.GlobalClasses
 import org.autojs.autojs.runtime.api.augment.global.IsNullish
@@ -63,6 +65,7 @@ import org.autojs.autojs.runtime.api.augment.jsox.Jsox
 import org.autojs.autojs.runtime.api.augment.jsox.Mathx
 import org.autojs.autojs.runtime.api.augment.jsox.Numberx
 import org.autojs.autojs.runtime.api.augment.media.Media
+import org.autojs.autojs.runtime.api.augment.mediainfo.Mediainfo
 import org.autojs.autojs.runtime.api.augment.mime.Mime
 import org.autojs.autojs.runtime.api.augment.nanoid.NanoID
 import org.autojs.autojs.runtime.api.augment.notice.Notice
@@ -93,6 +96,7 @@ import org.autojs.autojs.runtime.api.augment.util.VersionCodesInfo
 import org.autojs.autojs.runtime.api.augment.web.Web
 import org.autojs.autojs.runtime.api.augment.web.WebSocket
 import org.autojs.autojs.runtime.api.augment.web.WebSocketFields
+import org.autojs.autojs.runtime.api.augment.zip.Zip
 import org.autojs.autojs.runtime.exception.ScriptEnvironmentException
 import org.autojs.autojs.runtime.exception.ScriptException
 import org.autojs.autojs.runtime.exception.ScriptInterruptedException
@@ -108,6 +112,7 @@ import org.autojs.autojs.util.SdkVersionUtils
 import org.autojs.autojs.util.StringUtils
 import org.autojs.autojs.util.ViewUtils
 import org.autojs.autojs6.R
+import org.mediainfo.android.MediaInfo
 import org.mozilla.javascript.BaseFunction
 import org.mozilla.javascript.ContextFactory
 import org.mozilla.javascript.RhinoException
@@ -115,7 +120,6 @@ import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
 import org.mozilla.javascript.ScriptableObject.PERMANENT
 import org.mozilla.javascript.ScriptableObject.READONLY
-import org.mozilla.javascript.Wrapper
 import java.io.File
 import java.io.FileFilter
 import java.io.IOException
@@ -123,6 +127,7 @@ import java.io.PrintWriter
 import java.io.StringWriter
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.cancellation.CancellationException
 import org.autojs.autojs.core.accessibility.UiSelector as CoreUiSelector
 import org.autojs.autojs.core.crypto.Crypto as CoreCrypto
 import org.autojs.autojs.core.image.Colors as CoreColors
@@ -144,7 +149,6 @@ import org.autojs.autojs.runtime.api.Mime as ApiMime
 import org.autojs.autojs.runtime.api.Notice as ApiNotice
 import org.autojs.autojs.runtime.api.Ocr as ApiOcr
 import org.autojs.autojs.runtime.api.OcrMLKit as ApiOcrMLKit
-import org.autojs.autojs.runtime.api.OcrPaddle as ApiOcrPaddle
 import org.autojs.autojs.runtime.api.OcrRapid as ApiOcrRapid
 import org.autojs.autojs.runtime.api.Plugins as ApiPlugins
 import org.autojs.autojs.runtime.api.Recorder as ApiRecorder
@@ -155,7 +159,10 @@ import org.autojs.autojs.runtime.api.Threads as ApiThreads
 import org.autojs.autojs.runtime.api.Timers as ApiTimers
 import org.autojs.autojs.runtime.api.Toaster as ApiToaster
 import org.autojs.autojs.runtime.api.UI as ApiUI
+import org.autojs.autojs.runtime.api.Util as ApiUtil
 import org.autojs.autojs.runtime.api.augment.autojs.Version as AutojsVersion
+import org.autojs.autojs.runtime.api.augment.converter.Bytes as BytesCvt
+import org.autojs.autojs.runtime.api.augment.formatter.Bytes as BytesFmt
 import org.autojs.autojs.runtime.api.augment.global.Legacy as GlobalLegacy
 import org.autojs.autojs.runtime.api.augment.notice.Channel as NoticeChannel
 import org.autojs.autojs.runtime.api.augment.util.Inspect as UtilInspect
@@ -166,11 +173,17 @@ import org.autojs.autojs.runtime.api.augment.util.VersionCodes as UtilVersionCod
 
 /**
  * Created by Stardust on Jan 27, 2017.
- * Modified by SuperMonster003 as of Dec 1, 2021.
- * Created by SuperMonster003 on May 24, 2024.
+ * Modified by SuperMonster003 as of Dec 29, 2025.
+ * Transformed by SuperMonster003 on May 24, 2024.
  */
-@Suppress("unused", "PropertyName", "PrivatePropertyName")
+@Suppress("unused", "PropertyName")
 class ScriptRuntime private constructor(builder: Builder) {
+
+    private val mJob = SupervisorJob()
+    val coroutineScope = CoroutineScope(Dispatchers.Default + mJob)
+    val coroutineContext = coroutineScope.coroutineContext
+
+    val ownerId = "runtime@${System.identityHashCode(this)}"
 
     private var mUiHandlerAppContext: Context
     private var mRootShell: AbstractShell? = null
@@ -237,6 +250,10 @@ class ScriptRuntime private constructor(builder: Builder) {
     @JvmField
     @ScriptVariable
     val ui: ApiUI
+
+    @JvmField
+    @ScriptVariable
+    val util: ApiUtil
 
     @JvmField
     @ScriptVariable
@@ -325,10 +342,6 @@ class ScriptRuntime private constructor(builder: Builder) {
 
     @JvmField
     @ScriptVariable
-    val ocrPaddle: ApiOcrPaddle
-
-    @JvmField
-    @ScriptVariable
     val ocrRapid: ApiOcrRapid
 
     @JvmField
@@ -365,11 +378,19 @@ class ScriptRuntime private constructor(builder: Builder) {
         }
     }
 
-    private lateinit var augmentedApp: ScriptableObject
+    @JvmField
+    @ScriptInterface
+    val mediaInfo = MediaInfo()
 
-    private lateinit var augmentedAutojs: ScriptableObject
+    var isJavaPrimitiveWrap
+        get() = bridges.isJavaPrimitiveWrap()
+        set(b) = bridges.setJavaPrimitiveWrap(b)
 
     internal lateinit var consoleProxyObject: ProxyObject
+
+    internal lateinit var augmentedApp: ScriptableObject
+
+    internal lateinit var augmentedAutojs: ScriptableObject
 
     internal lateinit var augmentedOcrMLKit: ScriptableObject
 
@@ -382,12 +403,12 @@ class ScriptRuntime private constructor(builder: Builder) {
     // @Commented by SuperMonster003 on May 24, 2022.
     //  ! Use internal Rhino JSON for better performance and compatibility.
     //  ! zh-CN: 使用 Rhino 内置的 JSON 以获得更好的性能及兼容性.
-    // val js_JSON by lazy { rhinoRequire("json2") as ScriptableObject }
+    // internal val js_JSON by lazy { rhinoRequire("json2") as ScriptableObject }
 
     // @Commented by SuperMonster003 on May 26, 2024.
     //  ! Already implemented in Rhino 1.7.15 .
     //  ! zh-CN: 已在 Rhino 1.7.15 中实现.
-    // val js_polyfill by lazy { rhinoRequire("polyfill") as ScriptableObject }
+    // internal val js_polyfill by lazy { rhinoRequire("polyfill") as ScriptableObject }
 
     /**
      * @Hint by SuperMonster003 on Apr 17, 2022.
@@ -416,21 +437,23 @@ class ScriptRuntime private constructor(builder: Builder) {
      * Substitution of Promise.
      * zh-CN: Promise 的替代方案.
      */
-    val js_Promise by lazy { rhinoRequire("promise") as BaseFunction }
+    internal val js_Promise by lazy { rhinoRequire("promise") as BaseFunction }
 
-    val js_ResultAdapter by lazy { rhinoRequire("result-adapter") as BaseFunction }
+    internal val js_ResultAdapter by lazy { rhinoRequire("result-adapter") as BaseFunction }
+    internal val js_UiExt by lazy { rhinoRequire("ui-ext") as BaseFunction }
+    internal val js_Module by lazy { rhinoRequire("jvm-npm") as ScriptableObject }
 
-    val js_UiExt by lazy { rhinoRequire("ui-ext") as BaseFunction }
+    internal val js_mod_axios by lazy { rhinoRequire("axios") as BaseFunction }
+    internal val js_mod_cheerio by lazy { rhinoRequire("cheerio") as ScriptableObject }
+    internal val js_mod_dayjs by lazy { rhinoRequire("dayjs") as BaseFunction }
+    internal val js_mod_i18n by lazy { rhinoRequire("i18n") as BaseFunction }
 
-    private val js_object_observe_lite_min by lazy { rhinoRequire("object-observe-lite.min") as BaseFunction }
+    internal val js_mod_continuation by lazy { rhinoRequire("continuation") as ScriptableObject }
+    internal val js_mod_internal by lazy { rhinoRequire("internal") as ScriptableObject }
 
-    private val js_array_observe_min by lazy { rhinoRequire("array-observe.min") as BaseFunction }
-
-    private val js_mod_continuation by lazy { rhinoRequire("continuation") as ScriptableObject }
-
-    private val js_mod_internal by lazy { rhinoRequire("internal") as ScriptableObject }
-
-    private val js_Module by lazy { rhinoRequire("jvm-npm") as ScriptableObject }
+    internal val js_object_observe_lite_min by lazy { rhinoRequire("object-observe-lite.min") as BaseFunction }
+    internal val js_array_observe_min by lazy { rhinoRequire("array-observe.min") as BaseFunction }
+    internal val js_structured_clone by lazy { rhinoRequire("structured-clone.min") as BaseFunction }
 
     init {
         info = accessibilityBridge.infoProvider
@@ -444,6 +467,7 @@ class ScriptRuntime private constructor(builder: Builder) {
         floaty = ApiFloaty(uiHandler, this)
 
         ui = ApiUI(mUiHandlerAppContext, this)
+        util = ApiUtil
         images = ApiImages(mUiHandlerAppContext, this)
         device = ApiDevice(mUiHandlerAppContext)
         media = ApiMedia(mUiHandlerAppContext, this)
@@ -451,7 +475,6 @@ class ScriptRuntime private constructor(builder: Builder) {
 
         http = ApiHttp()
         ocrMLKit = ApiOcrMLKit()
-        ocrPaddle = ApiOcrPaddle()
         ocrRapid = ApiOcrRapid()
         barcode = ApiBarcode()
 
@@ -473,7 +496,6 @@ class ScriptRuntime private constructor(builder: Builder) {
         ).let { ApiPlugins(mUiHandlerAppContext, it) }
 
         augment(topLevelScope)
-        applyExecutionModules(topLevelScope)
         applyInternalModules(topLevelScope)
     }
 
@@ -483,6 +505,8 @@ class ScriptRuntime private constructor(builder: Builder) {
         //  ! zh-CN: "object observe" 需要先于 "array observe".
         callFunction(this, js_object_observe_lite_min, topLevelScope, topLevelScope, arrayOf(topLevelScope))
         callFunction(this, js_array_observe_min, topLevelScope, topLevelScope, arrayOf(topLevelScope))
+
+        callFunction(this, js_structured_clone, topLevelScope, topLevelScope, arrayOf(topLevelScope))
 
         if (Pref.isExtendingJsBuildInObjectsEnabled) Jsox.extendAllRhinoWithRuntime(this)
 
@@ -554,52 +578,67 @@ class ScriptRuntime private constructor(builder: Builder) {
     @Deprecated("ScriptRuntime#stop is deprecated", ReplaceWith("exit()"))
     fun stop() = exit()
 
+    fun cancelScriptJobs() {
+        mJob.cancel(CancellationException(mUiHandlerAppContext.getString(R.string.error_script_is_on_exiting)))
+    }
+
     fun onExit() {
         Log.d(TAG, "on exit")
         this.isExiting = true
 
-        ignoresException({
+        ignoresException {
             if (console.configurator.isExitOnClose) {
                 console.hideDelayed()
             }
-        })
+        }
 
-        ignoresException({ CoreWebSocket.onExit("Triggered by $TAG") })
+        ignoresException { CoreWebSocket.onExit("Triggered by $TAG") }
 
         // @Hint by 抠脚本人 (https://github.com/little-alei) on Jul 10, 2023.
         //  ! 清空无障碍事件.
         //  ! en-US (translated by SuperMonster003 on Jul 29, 2024):
         //  ! To clear accessibility event callbacks.
-        ignoresException({ AccessibilityService.clearAccessibilityEventCallback() })
+        // @Hint by SuperMonster003 on Dec 29, 2025.
+        //  ! Only clean up accessibility event callbacks registered
+        //  ! by the current script to avoid affecting other still-running scripts.
+        //  ! zh-CN: 只清理当前脚本注册的无障碍事件回调，避免影响其他仍在运行的脚本.
+        //  # ignoresException({ AccessibilityService.clearAccessibilityEventCallback() })
+        ignoresException { automator.removeAllEventsForThisRuntime() }
 
-        ignoresException({ RootUtils.resetRuntimeOverriddenRootModeState() })
+        ignoresException { RootUtils.resetRuntimeOverriddenRootModeState() }
 
-        /* 回收全部记录的 ImageWrapper 实例. */
-        ignoresException({ CoreImageWrapper.recycleAll() })
+        // Recycle all recorded ImageWrapper instances.
+        // zh-CN: 回收全部记录的 ImageWrapper 实例.
+        ignoresException { CoreImageWrapper.recycleAll() }
 
-        /* 清除 interrupt 状态. */
-        ignoresException({ ThreadCompat.interrupted() })
+        // Clear interrupt status.
+        // zh-CN: 清除 interrupt 状态.
+        ignoresException { ThreadCompat.interrupted() }
 
-        /* 浮动窗口需要第一时间关闭. */
-        /* 以免出现恶意脚本全屏浮动窗口遮蔽屏幕并且在 exit 中写死循环的问题. */
-        ignoresException({ floaty.closeAll() })
+        // Floating windows need to be closed immediately.
+        // To prevent malicious scripts from creating fullscreen floating windows
+        // that obscure the screen and write infinite loops in exit.
+        // zh-CN:
+        // 浮动窗口需要第一时间关闭.
+        // 以免出现恶意脚本全屏浮动窗口遮蔽屏幕并且在 exit 中写死循环的问题.
+        ignoresException { floaty.closeAll() }
 
-        ignoresException({ events.emit("exit") }, "Exception on exit: %s")
-        ignoresException({ ScriptToast.clear(this) }, 500)
+        ignoresException("Exception on exit: %s") {
+            events.emit("exit")
+        }
 
-        ignoresException({ threads.shutDownAll() })
-        ignoresException({ events.recycle() })
-        ignoresException({ media.recycle() })
-        ignoresException({ loopers.recycle() })
-        ignoresException({ this.recycleShell() })
-        ignoresException({ images.releaseScreenCapturer() })
-        ignoresException({ images.stopScreenCapturerForegroundService() })
-        ignoresException({ ocrMLKit.release() })
-        ignoresException({ ocrPaddle.release() })
-        ignoresException({ sensors.unregisterAll() })
-        ignoresException({ timers.recycle() })
-        ignoresException({ ui.recycle() })
-        ignoresException({ closeableManager.recycleAll() })
+        ignoresException { threads.shutDownAll() }
+        ignoresException { events.recycle() }
+        ignoresException { media.recycle() }
+        ignoresException { loopers.recycle() }
+        ignoresException { recycleShell() }
+        ignoresException { images.releaseScreenCapturer() }
+        ignoresException { images.stopScreenCapturerForegroundService() }
+        ignoresException { ocrMLKit.release() }
+        ignoresException { sensors.unregisterAll() }
+        ignoresException { timers.recycle() }
+        ignoresException { ui.recycle() }
+        ignoresException { closeableManager.recycleAll() }
     }
 
     fun setScreenMetrics(width: Int, height: Int) {
@@ -676,11 +715,11 @@ class ScriptRuntime private constructor(builder: Builder) {
         }
     }
 
-    private fun ignoresException(r: Runnable, @Suppress("SameParameterValue") delay: Int) {
-        uiHandler.postDelayed(r, delay.toLong())
+    private fun ignoresException(r: Runnable) {
+        ignoresException(null, r)
     }
 
-    private fun ignoresException(r: Runnable, consoleMessage: String? = null) {
+    private fun ignoresException(consoleMessage: String?, r: Runnable) {
         try {
             r.run()
         } catch (e: Throwable) {
@@ -697,20 +736,20 @@ class ScriptRuntime private constructor(builder: Builder) {
 
     private fun augment(target: ScriptableObject) {
 
-        Global(this).assign(target, GlobalClasses)
-        GlobalLegacy(this).assign(target)
-        IsNullish.augment(target, false)
-        Util.augment(target, true).apply {
-            UtilJava.augment(this, false)
-            UtilVersion.augment(this, false)
-            UtilVersionCodes.augment(this, VersionCodesInfo.obj, false)
-            UtilInspect.augment(this, false)
-            UtilMorseCode.augment(this, false)
+        Global(this).assignWithRuntime(target, this, GlobalClasses)
+        GlobalLegacy(this).assignWithRuntime(target, this)
+        IsNullish.augmentWithRuntime(target, this, false)
+        Util.augmentWithRuntime(target, this, util, true).also { util ->
+            UtilJava.augmentWithRuntime(util, this, false)
+            UtilVersion.augmentWithRuntime(util, this, false)
+            UtilVersionCodes.augmentWithRuntime(util, this, VersionCodesInfo.obj, false)
+            UtilInspect.augmentWithRuntime(util, this, false)
+            UtilMorseCode.augmentWithRuntime(util, this, false)
         }
-        Species.augment(target, true)
+        Species.augmentWithRuntime(target, this, true)
         App(this).augment(target, app, true).also { augmentedApp = it }
-        Autojs(this).augment(target, true).also { augmentedAutojs = it }.apply {
-            AutojsVersion.augment(this, false)
+        Autojs(this).augment(target, true).also { augmentedAutojs = it }.also { autojs ->
+            AutojsVersion.augmentWithRuntime(autojs, this, false)
         }
         Shell(this).augment(target, true)
         Timers(this).augment(target, timers, true)
@@ -718,26 +757,33 @@ class ScriptRuntime private constructor(builder: Builder) {
         Automator(this).augment(target, true)
         Selector(this).augment(target, true, READONLY)
         Events(this).augment(target, events, true)
-        Keys.augment(target, true)
+        Keys.augmentWithRuntime(target, this, true)
+        Canvas(this).augment(target, false)
         Images(this).augment(target, true)
-        Ocr(this).augment(target, true).apply {
-            OcrMLKit(this@ScriptRuntime).augment(this, false).also { augmentedOcrMLKit = it }
-            OcrPaddle(this@ScriptRuntime).augment(this, false).also { augmentedOcrPaddle = it }
-            OcrRapid(this@ScriptRuntime).augment(this, false).also { augmentedOcrRapid = it }
+        Ocr(this).augment(target, true).also { ocr ->
+            OcrMLKit(this).augment(ocr, false).also { augmentedOcrMLKit = it }
+            OcrPaddle(this).augment(ocr, false).also { augmentedOcrPaddle = it }
+            OcrRapid(this).augment(ocr, false).also { augmentedOcrRapid = it }
         }
         Barcode(this).augment(target, true)
         QrCode(this).augment(target, true)
         Threads(this).augment(target, threads, true)
         UI(this).proxying(target, ui, true)
-        Colors.augment(target, listOf(colors, Colors), true)
-        Color.augment(target, false)
+        Colors.augmentWithRuntime(target, this, Colors.colorTables + colors, true)
+        Color.augmentWithRuntime(target, this,Colors.colorTables, false)
         Tasks(this).augment(target, true)
         Dialogs(this).augment(target, true)
         Continuation(this).augment(target, js_mod_continuation, true, READONLY)
         Http(this).augment(target, http, true)
         Web(this).augment(target, true)
         WebSocket(this).augment(target, WebSocketFields, false)
-        S13n.augment(target, true)
+        S13n.augmentWithRuntime(target, this, true)
+        Converter.augmentWithRuntime(target, this, true).also { cvt ->
+            BytesCvt.augmentWithRuntime(cvt, this, false)
+        }
+        Formatter.augmentWithRuntime(target, this, true).also { fmt ->
+            BytesFmt.augmentWithRuntime(fmt, this, false)
+        }
         Console(this).proxying(target, console, true).also { consoleProxyObject = it }
         Plugins(this).augment(target, true)
         Arrayx(this).augment(target, false)
@@ -745,44 +791,32 @@ class ScriptRuntime private constructor(builder: Builder) {
         Mathx(this).augment(target, false)
         Jsox(this).augment(target, true)
         Files(this).augment(target, files, true)
-        Crypto.augment(target, CoreCrypto, true)
+        Crypto.augmentWithRuntime(target, this, CoreCrypto, true)
         RootAutomator(this).augment(target, false)
         Engines(this).augment(target, true)
         Floaty(this).augment(target, true)
-        Storages.augment(target, true)
+        Storages.augmentWithRuntime(target, this, true)
         Device(this).augment(target, device, true)
         Recorder(this).augment(target, recorder, true)
         Toast(this).augment(target, true)
-        Media.augment(target, media, true)
-        Sensors.augment(target, sensors, true)
-        Base64.augment(target, true)
-        Notice(this).augment(target, true).apply {
-            NoticeChannel(this@ScriptRuntime).augment(this, false)
+        Media.augmentWithRuntime(target, this, media, true)
+        Sensors.augmentWithRuntime(target, this, sensors, true)
+        Base64.augmentWithRuntime(target, this, true)
+        Notice(this).augment(target, true).also { notice ->
+            NoticeChannel(this).augment(notice, false)
         }
         Shizuku(this).augment(target, shizuku, true)
-        OpenCC.augment(target, true)
+        OpenCC.augmentWithRuntime(target, this, true)
         Mime(this).augment(target, mime, true)
         SysProps(this).augment(target, true)
         SQLite(this).augment(target, true)
-        NanoID.augment(target, true)
-        Pinyin.augment(target, true)
-        Pinyin4j.augment(target, true)
+        Zip(this).augment(target, true)
+        NanoID.augmentWithRuntime(target, this, true)
+        Pinyin.augmentWithRuntime(target, this, true)
+        Pinyin4j.augmentWithRuntime(target, this, true)
+        Mediainfo(this).augment(target, true)
 
         augmentedApp.defineProp(Autojs::class.java.simpleName.lowercase(), augmentedAutojs)
-    }
-
-    private fun applyExecutionModules(global: Scriptable) {
-        ScriptEngineService.GLOBAL_MODULES.forEach { moduleMode ->
-            val moduleName = ScriptEngineService.getModuleNameFromMode(moduleMode) ?: return@forEach
-            var module = global.prop(moduleName) ?: return@forEach
-            if (module is Wrapper) module = module.unwrap()
-            when (module) {
-                is ScriptEngineService.ScriptModuleIdentifier -> {
-                    global.defineProp(moduleName, rhinoRequire(module.moduleFileName), PERMANENT)
-                }
-                else -> global.deleteProp(moduleName)
-            }
-        }
     }
 
     private fun applyInternalModules(global: Scriptable) {

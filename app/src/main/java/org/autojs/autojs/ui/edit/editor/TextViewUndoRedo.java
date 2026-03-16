@@ -4,7 +4,6 @@ package org.autojs.autojs.ui.edit.editor;
  * THIS CLASS IS PROVIDED TO THE PUBLIC DOMAIN FOR FREE WITHOUT ANY
  * RESTRICTIONS OR ANY WARRANTY.
  */
-import java.util.LinkedList;
 
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
@@ -15,8 +14,12 @@ import android.text.TextWatcher;
 import android.text.style.UnderlineSpan;
 import android.widget.TextView;
 
+import java.util.LinkedList;
+
 /**
  * A generic undo/redo implementation for TextViews.
+ * <p>
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Feb 12, 2026.
  */
 public class TextViewUndoRedo {
 
@@ -46,6 +49,10 @@ public class TextViewUndoRedo {
 
     private int mInitialHistoryStackSize;
 
+    // Baseline position for "unchanged" state.
+    // zh-CN: "未修改" 状态的基线位置.
+    private int mInitialHistoryPosition;
+
     private final Handler mHandler = new Handler();
     private int mTextChangeId = 0;
     private final boolean mTextChanging = false;
@@ -72,19 +79,57 @@ public class TextViewUndoRedo {
         mEnabled = enabled;
     }
 
+    /**
+     * Reset undo/redo history without modifying the current text.
+     * <p>
+     * This is useful after bulk loading text progressively, where the text is already in the TextView
+     * and we only want to treat it as the "baseline" (unchanged) state.
+     * <p>
+     * zh-CN:
+     * <p>
+     * 在不修改当前文本的前提下重置 undo/redo 历史.
+     * <p>
+     * 适用于渐进式批量加载文本后: 文本已经在 TextView 中, 此时只需要把它视为 "基线" (未修改) 状态.
+     */
+    public final void resetHistoryAsUnchanged() {
+        clearHistory();
+        markTextAsUnchanged();
+    }
+
+    // public final void setDefaultText(CharSequence text) {
+    //     clearHistory();
+    //     mIsUndoOrRedo = true;
+    //     ((Editable) mTextView.getText()).replace(0, text.length(), text);
+    //     mIsUndoOrRedo = false;
+    // }
+
     public final void setDefaultText(CharSequence text) {
         clearHistory();
         mIsUndoOrRedo = true;
-        ((Editable) mTextView.getText()).replace(0, text.length(), text);
+        Editable editable = (Editable) mTextView.getText();
+
+        // Replace the entire old content, not based on the new text length.
+        // zh-CN: 替换整个旧内容, 而不是按新文本长度截断替换范围.
+        editable.replace(0, editable.length(), text);
+
         mIsUndoOrRedo = false;
     }
 
-    public boolean isTextChanged(){
-        return mInitialHistoryStackSize != mEditHistory.size();
+    public boolean isTextChanged() {
+        // IMPORTANT:
+        // Use history position rather than history size.
+        // Undo/redo changes mmPosition while keeping history size the same.
+        //
+        // zh-CN:
+        // 重要:
+        // 使用 history position 而不是 history size.
+        // undo/redo 会改变 mmPosition, 但 history size 往往不变.
+        return mInitialHistoryPosition != mEditHistory.mmPosition;
     }
 
     public void markTextAsUnchanged() {
         mInitialHistoryStackSize = mEditHistory.size();
+        mInitialHistoryPosition = mEditHistory.mmPosition;
     }
 
     // =================================================================== //
@@ -110,6 +155,7 @@ public class TextViewUndoRedo {
     public void clearHistory() {
         mEditHistory.clear();
         mInitialHistoryStackSize = 0;
+        mInitialHistoryPosition = 0;
     }
 
     /**
@@ -308,7 +354,7 @@ public class TextViewUndoRedo {
             }
         }
 
-        public int size(){
+        public int size() {
             return mmHistory.size();
         }
 
@@ -415,7 +461,7 @@ public class TextViewUndoRedo {
             mTextChangeId++;
             mEditHistory.add(new EditItem(start, mBeforeChange, mAfterChange));
             int textChangeId = mTextChangeId;
-            //TODO 增加连续输入文字当成一次撤销的功能
+            // TODO 增加连续输入文字当成一次撤销的功能
         }
 
         public void afterTextChanged(Editable s) {
@@ -424,6 +470,15 @@ public class TextViewUndoRedo {
             }
             if (mEditHistory.size() < mInitialHistoryStackSize) {
                 mInitialHistoryStackSize = 0;
+            }
+
+            // Keep baseline position within valid range after trims.
+            // zh-CN: 在 trim 等场景后, 保持基线 position 落在合法范围内.
+            if (mInitialHistoryPosition > mEditHistory.mmHistory.size()) {
+                mInitialHistoryPosition = mEditHistory.mmHistory.size();
+            }
+            if (mInitialHistoryPosition < 0) {
+                mInitialHistoryPosition = 0;
             }
         }
     }

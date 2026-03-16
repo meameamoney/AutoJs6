@@ -4,8 +4,10 @@
     <dimen name="about_item_avatar_side_length_compat">42dp</dimen>
     <dimen name="about_item_avatar_side_length_land">60dp</dimen>
     <dimen name="about_item_avatar_side_length_land_compact">54dp</dimen>
+    <dimen name="plugin_center_item_side_length">64dp</dimen>
+    <dimen name="plugin_center_item_icon_border_width">1dp</dimen>
     <dimen name="content_inset">16dp</dimen>
-    <dimen name="divider_drawer_menu_group">6dp</dimen>
+    <dimen name="divider_drawer_menu_group">1.5dp</dimen>
     <dimen name="fab_margin">16dp</dimen>
     <dimen name="floaty_window_offset">12dp</dimen>
     <dimen name="github_avatar_border_width">1dp</dimen>
@@ -48,8 +50,6 @@
     <dimen name="expanded_view_initial_height">518dp</dimen>
     <dimen name="toolbar_content_inset_start_with_navigation">64dp</dimen>
     <dimen name="dimen_25dp">25dp</dimen>
-    <integer name="snackbar_text_max_lines">2</integer>
-    <integer name="layout_node_info_view_decoration_line">2</integer>
 
     <!-- Android Resources -->
 
@@ -69,5 +69,9 @@
     <dimen name="ref_md_listitem_textsize">16sp</dimen>
     <dimen name="ref_md_listitem_height">48dp</dimen>
     <dimen name="toolbar_menu_item_width">40dp</dimen>
+    <dimen name="build_progress_icon_size">24dp</dimen>
+    <dimen name="build_progress_icon_text_gap">12dp</dimen>
+    <dimen name="build_progress_icon_text_size">16sp</dimen>
+    <dimen name="build_progress_row_spacing">12dp</dimen>
 
 </resources>

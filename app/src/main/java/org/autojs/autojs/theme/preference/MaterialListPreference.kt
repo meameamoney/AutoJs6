@@ -5,9 +5,10 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.util.AttributeSet
 import com.afollestad.materialdialogs.MaterialDialog
+import org.autojs.autojs.util.DialogUtils.showAdaptive
 import org.autojs.autojs.core.pref.Pref
-import org.autojs.autojs.extension.MaterialDialogExtensions.choiceWidgetThemeColor
-import org.autojs.autojs.extension.MaterialDialogExtensions.widgetThemeColor
+import org.autojs.autojs.util.DialogUtils.choiceWidgetThemeColor
+import org.autojs.autojs.util.DialogUtils.widgetThemeColor
 import org.autojs.autojs.ui.common.NotAskAgainDialog
 import org.autojs.autojs6.R
 
@@ -17,10 +18,11 @@ open class MaterialListPreference : MaterialDialogPreference {
     private var mItemValues: Collection<CharSequence> = emptyList()
     private var mItemDisables: Array<Int> = emptyArray()
     private var mItemDefaultKey: CharSequence? = null
-    private val mItemDefaultIndex: Int
+
+    protected val itemDefaultIndex: Int
         get() = getKeyIndex(mItemDefaultKey) ?: 0
 
-    private var itemPrefIndex: Int?
+    protected var itemPrefIndex: Int?
         get() = getKeyIndex(Pref.getStringOrNull(key))
         set(index) {
             index?.let {
@@ -31,7 +33,7 @@ open class MaterialListPreference : MaterialDialogPreference {
     private var mConfirmedPrompt: String? = null
 
     protected val entry: CharSequence?
-        get() = mItemValues.takeIf { it.isNotEmpty() }?.toList()?.get(itemPrefIndex ?: mItemDefaultIndex)
+        get() = mItemValues.takeIf { it.isNotEmpty() }?.toList()?.get(itemPrefIndex ?: itemDefaultIndex)
 
     protected val defaultEntry: CharSequence?
         get() {
@@ -93,7 +95,7 @@ open class MaterialListPreference : MaterialDialogPreference {
             builder.items(it)
             builder.choiceWidgetThemeColor()
             builder.takeIf { mItemDisables.isNotEmpty() }?.itemsDisabledIndices(*mItemDisables)
-            builder.itemsCallbackSingleChoice(itemPrefIndex ?: mItemDefaultIndex) { d, _, which, _ ->
+            builder.itemsCallbackSingleChoice(itemPrefIndex ?: itemDefaultIndex) { d, _, which, _ ->
                 if (itemPrefIndex != which) {
                     itemPrefIndex = which
                     showPrompt() ?: onChangeConfirmed(getDialog())
@@ -102,23 +104,49 @@ open class MaterialListPreference : MaterialDialogPreference {
                 }
                 return@itemsCallbackSingleChoice true
             }
+            val options = mutableListOf<MaterialDialog.OptionMenuItemSpec>()
             if (defaultEntry != null) {
-                builder.options(
-                    listOf(
-                        MaterialDialog.OptionMenuItemSpec(context.getString(R.string.dialog_button_use_default)) { dialog ->
-                            dialog.selectedIndex = mItemDefaultIndex
-                        },
-                    )
-                )
+                options += MaterialDialog.OptionMenuItemSpec(prefContext.getString(R.string.dialog_button_use_default), ::useDefaultOptionMenuItemSpecOnClickListener)
             }
+            if (longClickPrompt != null) {
+                options += MaterialDialog.OptionMenuItemSpec(prefContext.getString(R.string.dialog_button_details), ::detailsOptionMenuItemSpecOnClickListener)
+            }
+            builder.options(options)
         }
+    }
+
+    open fun useDefaultOptionMenuItemSpecOnClickListener(dialog: MaterialDialog) {
+        dialog.selectedIndex = itemDefaultIndex
+    }
+
+    open fun detailsOptionMenuItemSpecOnClickListener(dialog: MaterialDialog) {
+        MaterialDialog.Builder(prefContext)
+            .title(dialogTitle ?: prefContext.getString(R.string.text_details))
+            .content(longClickPrompt ?: "")
+            .also { builder ->
+                longClickPromptMore?.let { longClickPromptMore ->
+                    builder.neutralText(R.string.dialog_button_more)
+                    builder.neutralColorRes(R.color.dialog_button_hint)
+                    builder.onNeutral { _, _ ->
+                        MaterialDialog.Builder(prefContext)
+                            .title(R.string.text_details)
+                            .content(longClickPromptMore)
+                            .positiveText(R.string.dialog_button_dismiss)
+                            .positiveColorRes(R.color.dialog_button_default)
+                            .showAdaptive()
+                    }
+                }
+            }
+            .positiveText(R.string.dialog_button_dismiss)
+            .positiveColorRes(R.color.dialog_button_default)
+            .showAdaptive()
     }
 
     private fun getKeyIndex(keyString: CharSequence?): Int? {
         return keyString?.run { mItemKeys.indexOf(this).takeIf { it != -1 } }
     }
 
-    private fun showPrompt() = mConfirmedPrompt?.let { content ->
+    protected fun showPrompt() = mConfirmedPrompt?.let { content ->
         NotAskAgainDialog.Builder(prefContext, "prompt_\$_${key}")
             .title(R.string.text_prompt)
             .content(content)
@@ -131,7 +159,7 @@ open class MaterialListPreference : MaterialDialogPreference {
 
     open fun onChangeConfirmed(dialog: MaterialDialog) {
         notifyChanged()
-        getDialog().dismiss()
+        dialog.dismiss()
     }
 
 }

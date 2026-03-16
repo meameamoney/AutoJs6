@@ -1,14 +1,12 @@
 package org.autojs.autojs.engine
 
 import android.annotation.SuppressLint
+import android.graphics.Paint
+import android.os.Build
 import android.util.Log
 import android.view.View
 import org.autojs.autojs.core.ui.ViewExtras
 import org.autojs.autojs.engine.module.AssetAndUrlModuleSourceProvider
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
 import org.autojs.autojs.pio.PFiles
 import org.autojs.autojs.pio.UncheckedIOException
 import org.autojs.autojs.project.ScriptConfig
@@ -16,7 +14,12 @@ import org.autojs.autojs.rhino.AndroidContextFactory
 import org.autojs.autojs.rhino.AutoJsContext
 import org.autojs.autojs.rhino.RhinoAndroidHelper
 import org.autojs.autojs.rhino.TopLevelScope
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
 import org.autojs.autojs.runtime.ScriptRuntime
+import org.autojs.autojs.runtime.api.augment.proxy.PaintProxyObject
 import org.autojs.autojs.script.JavaScriptSource
 import org.autojs.autojs.util.RhinoUtils.coerceString
 import org.autojs.autojs.util.RhinoUtils.js_object_assign
@@ -28,21 +31,24 @@ import org.mozilla.javascript.NativeArray
 import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Script
 import org.mozilla.javascript.Scriptable
+import org.mozilla.javascript.ScriptableObject.DONTENUM
 import org.mozilla.javascript.ScriptableObject.PERMANENT
+import org.mozilla.javascript.ScriptableObject.READONLY
 import org.mozilla.javascript.commonjs.module.RequireBuilder
 import org.mozilla.javascript.commonjs.module.provider.SoftCachingModuleScriptProvider
+import org.mozilla.javascript.lc.type.TypeInfo
 import java.io.File
 import java.io.IOException
 import java.io.InputStreamReader
 import java.io.Reader
 import java.net.URI
-import java.util.*
+import java.util.Locale
 
 /**
  * Created by Stardust on Apr 2, 2017.
- * Modified by SuperMonster003 as of May 26, 2022.
+ * Modified by SuperMonster003 as of Jan 16, 2026.
  */
-open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, private val androidContext: android.content.Context) : JavaScriptEngine() {
+open class RhinoJavaScriptEngine(private val androidContext: android.content.Context) : JavaScriptEngine() {
 
     private val mWrapFactory = WrapFactory()
     val context: Context = enterContext()
@@ -77,7 +83,7 @@ open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, priva
             return if (hasFeature(ScriptConfig.FEATURE_CONTINUATION)) {
                 context.executeScriptWithContinuations(script, scriptable)
             } else {
-                script.exec(context, scriptable)
+                script.exec(context, scriptable, scriptable)
             }
         } catch (e: IOException) {
             throw UncheckedIOException(e)
@@ -90,6 +96,7 @@ open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, priva
     override fun forceStop() {
         Log.d(TAG, "forceStop: interrupt Thread: $thread")
         thread.interrupt()
+        runtime.cancelScriptJobs()
     }
 
     @Synchronized
@@ -101,20 +108,24 @@ open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, priva
 
     override fun init() {
         thread = Thread.currentThread()
-        scriptable.defineProp("__engine__", this)
+
         initRequireBuilder(context, scriptable)
 
         runtime.withTimeConsuming("runtime-init-prologue") {
             it.initPrologue()
         }
 
+        scriptable.defineProp("global", scriptable, PERMANENT)
+        scriptable.defineProp("__engine__", this, READONLY or DONTENUM or PERMANENT)
+        scriptable.defineProp("Promise", runtime.js_Promise, READONLY or PERMANENT)
+        scriptable.defineProp("ResultAdapter", runtime.js_ResultAdapter, READONLY or PERMANENT)
+
         mInitScript.withTimeConsuming("script-init") { initScript ->
             runCatching {
-                scriptable.defineProp("global", scriptable, PERMANENT)
                 context.executeScriptWithContinuations(initScript, scriptable)
             }.getOrElse { e ->
                 if (e.message?.contains("Script argument was not a script or was not created by interpreted mode") == true) {
-                    initScript.exec(context, scriptable)
+                    initScript.exec(context, scriptable, scriptable)
                 } else throw e
             }.let { export ->
                 when (export) {
@@ -185,7 +196,7 @@ open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, priva
         val rhinoAndroidHelper = RhinoAndroidHelper(androidContext)
         val enterContext = try {
             rhinoAndroidHelper.enterContext()
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             rhinoAndroidHelper.contextFactory.enterContext()
         }
         return enterContext.also { setupContext(it) }
@@ -195,8 +206,7 @@ open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, priva
         if (this is AutoJsContext) {
             rhinoJavaScriptEngine = this@RhinoJavaScriptEngine
         }
-        @Suppress("DEPRECATION")
-        optimizationLevel = -1
+        isInterpretedMode = true
         languageVersion = Context.VERSION_ES6
         locale = Locale.getDefault()
         wrapFactory = mWrapFactory
@@ -204,16 +214,23 @@ open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, priva
 
     private inner class WrapFactory : AndroidContextFactory.WrapFactory() {
 
-        override fun wrapAsJavaObject(cx: Context?, scope: Scriptable, javaObject: Any?, staticType: Class<*>?): Scriptable? {
-            return when (javaObject) {
-                is View -> ViewExtras.getNativeView(scope, /* view = */ javaObject, staticType, runtime)
+        override fun wrapAsJavaObject(cx: Context?, scope: Scriptable, javaObject: Any?, staticType: TypeInfo): Scriptable? {
+            return when {
+                javaObject is View -> ViewExtras.getNativeView(scope, /* view = */ javaObject, staticType.asClass(), runtime)
+                javaObject is Paint && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                    // Use composition-based proxy to preserve Paint identity and intercept setColor only.
+                    // zh-CN: 使用组合式代理以保持 Paint 身份一致性, 且仅拦截 setColor.
+                    val base = super.wrapAsJavaObject(cx, scope, javaObject, staticType) ?: return null
+                    PaintProxyObject(scope, base, javaObject)
+                }
                 else -> super.wrapAsJavaObject(cx, scope, javaObject, staticType)
             }
         }
-
     }
 
     companion object {
+
+        private const val TAG = "RhinoJavaScriptEngine"
 
         const val SOURCE_FILE_INIT = "init.js"
         const val SOURCE_NAME_INIT = "<init>"
@@ -222,9 +239,5 @@ open class RhinoJavaScriptEngine(private val scriptRuntime: ScriptRuntime, priva
 
         @JvmField
         val JS_BEAUTIFY_FILE = PFiles.join(JS_BEAUTIFY_PATH, "beautify.js")
-
-        private val TAG = RhinoJavaScriptEngine::class.java.simpleName
-
     }
-
 }

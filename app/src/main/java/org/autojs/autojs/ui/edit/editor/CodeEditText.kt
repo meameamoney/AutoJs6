@@ -33,7 +33,13 @@ import android.os.Parcelable
 import android.text.Layout
 import android.util.AttributeSet
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.accessibility.AccessibilityEvent
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputConnectionWrapper
+import android.view.inputmethod.InputMethodManager
 import android.widget.TextViewHelper
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.core.graphics.withTranslation
@@ -50,6 +56,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * Created by Administrator on Feb 11, 2018.
  * Modified by SuperMonster003 as of May 1, 2023.
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Feb 8, 2026.
+ * Modified by JetBrains AI Assistant (GPT-5.3-Codex (xhigh)) as of Mar 8, 2026.
  */
 class CodeEditText : AppCompatEditText {
 
@@ -59,6 +67,20 @@ class CodeEditText : AppCompatEditText {
     @Volatile
     private var mHighlightTokens: HighlightTokens? = null
 
+    // Loading state, used to suppress expensive callbacks during bulk text insertion.
+    // zh-CN: 加载状态, 用于在批量插入文本时抑制高开销回调.
+    @Volatile
+    private var mLoadingText = false
+
+    // Fixed gutter digits used during loading to avoid frequent requestLayout().
+    // zh-CN: 加载期间使用固定 gutter 位数, 避免频繁 requestLayout().
+    @Volatile
+    private var mLoadingGutterDigits: Int = 3
+
+    // Accessibility payload guardrail threshold.
+    // zh-CN: 无障碍事件负载护栏阈值.
+    private val mA11yLargeTextThresholdChars: Int = 64 * 1024
+
     private var mTheme: Theme = Theme.getDefault(context)
     private val mLineHighlightPaint = Paint().apply { style = Paint.Style.FILL }
     private var mFirstLineForDraw = -1
@@ -67,6 +89,23 @@ class CodeEditText : AppCompatEditText {
     private var mUnmatchedBracket = -1
     private var mDebuggingLine = -1
     private var mCursorChangeCallbacks: CopyOnWriteArrayList<CursorChangeCallback>? = null
+
+    // Callback when user touches the editor text area (not gutter).
+    // This is used by large-file loader to avoid forcing caret to 0 after user interaction.
+    //
+    // zh-CN:
+    // 当用户触摸编辑器文本区域 (非行号区域) 时的回调.
+    // 用于大文件加载逻辑: 若用户已交互, 则避免加载完成后强制将光标跳到 0.
+    @Volatile
+    var onUserTouchInTextArea: (() -> Unit)? = null
+
+    // Read-only state.
+    // zh-CN: 只读状态.
+    private var mReadOnly = false
+
+    // Backup of the original KeyListener, used to restore editable behavior.
+    // zh-CN: 备份原始 KeyListener, 用于恢复可编辑行为.
+    private var mOriginalKeyListener = keyListener
 
     private val currentLine: Int
         get() = layout?.let { LayoutHelper.getLineOfChar(it, selectionStart) } ?: -1
@@ -99,6 +138,137 @@ class CodeEditText : AppCompatEditText {
             importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO
         }
         mCursorChangeCallbacks = CopyOnWriteArrayList()
+
+        // Prevent Android framework from saving/restoring huge editor text via View state.
+        // Otherwise minimizing the Activity may trigger TransactionTooLargeException for large files.
+        //
+        // zh-CN:
+        // 禁止系统通过 View state 自动保存/恢复超大的编辑器文本.
+        // 否则在最小化 Activity 时, 大文件很容易触发 TransactionTooLargeException.
+        isSaveEnabled = false
+        freezesText = false
+
+        // Ensure selection is possible by default.
+        // zh-CN: 默认确保可以进行文本选择.
+        setTextIsSelectable(true)
+        isLongClickable = true
+
+        // Update accessibility importance at init.
+        // zh-CN: 初始化时更新无障碍重要性配置.
+        updateAccessibilityImportanceIfNeeded()
+    }
+
+    // Toggle loading state.
+    // zh-CN: 切换加载状态.
+    fun setLoadingText(loading: Boolean) {
+        mLoadingText = loading
+        if (loading) {
+            applyFixedGutterPaddingForLoading()
+        } else {
+            // Recompute gutter once after loading.
+            // zh-CN: 加载结束后重新计算 gutter (仅一次).
+            requestLayout()
+            invalidate()
+        }
+    }
+
+    // Expose loading state for outer components to suppress expensive UI updates.
+    // zh-CN: 对外暴露加载状态, 以便外部组件抑制高开销 UI 更新.
+    fun isLoadingText(): Boolean = mLoadingText
+
+    // Configure a fixed gutter width for loading.
+    // zh-CN: 配置加载期间的固定 gutter 宽度.
+    fun setLoadingGutterDigits(digits: Int) {
+        mLoadingGutterDigits = digits.coerceIn(2, 10)
+        if (mLoadingText) {
+            applyFixedGutterPaddingForLoading()
+        }
+    }
+
+    private fun applyFixedGutterPaddingForLoading() {
+        // Pre-allocate gutter width based on digits, e.g., "888888".
+        // zh-CN: 基于位数预分配 gutter 宽度, 例如 "888888".
+        val sample = "8".repeat(mLoadingGutterDigits)
+        val gutterWidth = paint.measureText(sample) + 20
+        if (paddingLeft.toFloat() != gutterWidth) {
+            setPadding(gutterWidth.toInt(), 0, 0, 0)
+        }
+    }
+
+    // Public API to toggle read-only mode.
+    // zh-CN: 切换只读模式的公开接口.
+    fun setReadOnly(readOnly: Boolean) {
+        if (mReadOnly == readOnly) return
+        mReadOnly = readOnly
+
+        if (readOnly) {
+            // Keep enabled/focusable so the user can select and copy text.
+            // zh-CN: 保持 enabled/focusable, 让用户可以选择并复制文本.
+            isEnabled = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setTextIsSelectable(true)
+            isLongClickable = true
+            isCursorVisible = true
+
+            // Disable soft keyboard editing by removing KeyListener.
+            // zh-CN: 通过移除 KeyListener 禁用软键盘编辑.
+            if (mOriginalKeyListener == null) {
+                mOriginalKeyListener = keyListener
+            }
+            keyListener = null
+
+            showSoftInputOnFocus = false
+        } else {
+            // Restore editable behavior.
+            // zh-CN: 恢复可编辑行为.
+            keyListener = mOriginalKeyListener
+            showSoftInputOnFocus = true
+        }
+    }
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? {
+        val ic = super.onCreateInputConnection(outAttrs) ?: return null
+        if (!mReadOnly) return ic
+
+        // Block all text-mutating operations at the InputConnection layer.
+        // zh-CN: 在 InputConnection 层阻止所有会修改文本的操作.
+        return object : InputConnectionWrapper(ic, true) {
+            override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean = false
+            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean = false
+            override fun finishComposingText(): Boolean = false
+            override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean = false
+            override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean = false
+        }
+    }
+
+    override fun onTextContextMenuItem(id: Int): Boolean {
+        if (mReadOnly) {
+            // Allow copy/select actions, block cut/paste/replace actions.
+            // zh-CN: 允许复制/选择相关操作, 阻止剪切/粘贴/替换等修改操作.
+            when (id) {
+                android.R.id.cut,
+                android.R.id.paste,
+                android.R.id.pasteAsPlainText,
+                android.R.id.replaceText,
+                    -> return false
+            }
+        }
+        return super.onTextContextMenuItem(id)
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (mReadOnly) {
+            // Block hardware-keyboard editing shortcuts.
+            // zh-CN: 阻止硬件键盘的编辑快捷键.
+            if (keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_FORWARD_DEL) {
+                return true
+            }
+            if (event.isCtrlPressed && (keyCode == KeyEvent.KEYCODE_V || keyCode == KeyEvent.KEYCODE_X)) {
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     @SuppressLint("WrongConstant")
@@ -187,6 +357,12 @@ class CodeEditText : AppCompatEditText {
     }
 
     private fun updatePaddingForGutter() {
+        // During loading, keep gutter fixed to avoid setPadding() loops and relayout storms.
+        // zh-CN: 加载期间保持 gutter 固定, 避免 setPadding() 循环与频繁 relayout.
+        if (mLoadingText) {
+            return
+        }
+
         // 根据行号计算左边距 padding 留出绘制行号的空间
         val max = lineCount.toString()
         val gutterWidth = paint.measureText(max) + 20
@@ -200,7 +376,9 @@ class CodeEditText : AppCompatEditText {
     private fun drawText(canvas: Canvas) {
         if (mFirstLineForDraw < 0) return
 
-        val textLength = mHighlightTokens?.text?.length ?: 0
+        val highlightTokens = mHighlightTokens
+        val safeText = text ?: return
+        val textLength = highlightTokens?.text?.length ?: 0
         val scrollX = (mParentScrollView!!.scrollX + scrollX - paddingLeft).coerceAtLeast(0)
 
         for (line in mFirstLineForDraw..lineCount.coerceAtMost(mLastLineForDraw)) {
@@ -211,7 +389,6 @@ class CodeEditText : AppCompatEditText {
             val lineBottom = layout.getLineTop(lineNumber)
             val lineTop = layout.getLineTop(line)
             val lineBaseline = lineBottom - layout.getLineDescent(line)
-            val highlightTokens = mHighlightTokens
 
             // if there is a breakpoint at this line, draw a highlight background for line number
             if (breakpoints.containsKey(line)) {
@@ -232,27 +409,48 @@ class CodeEditText : AppCompatEditText {
                 /* paint = */ paint.apply { color = mTheme.lineNumberColor },
             )
 
-            if (highlightTokens == null) continue
-
-            // Draw code
-
             val lineStart = layout.getLineStart(line)
-            val lineVisibleEnd = layout.getLineVisibleEnd(line)
+
+            // Never draw line-break control characters.
+            // zh-CN: 永远不要绘制换行等控制字符.
+            var lineEnd = layout.getLineEnd(line).coerceAtMost(safeText.length)
+            while (lineEnd > lineStart) {
+                val ch = safeText[lineEnd - 1]
+                if (ch == '\n' || ch == '\r') {
+                    lineEnd--
+                } else {
+                    break
+                }
+            }
+
+            // Fast path: no syntax highlighting, draw the line once with default color.
+            // zh-CN: 快速路径: 无语法高亮时, 使用默认颜色一次性绘制整行.
+            if (highlightTokens == null) {
+                val visibleCharStart = getVisibleCharIndex(paint, scrollX, lineStart, lineEnd)
+                val visibleCharEnd = (getVisibleCharIndex(paint, scrollX + mParentScrollView!!.width, lineStart, lineEnd) + 1)
+                    .coerceAtMost(lineEnd)
+
+                if (visibleCharStart >= visibleCharEnd) continue
+
+                paint.color = mTheme.getColorForToken(Token.NAME)
+                runCatching {
+                    val offsetX = paint.measureText(safeText, lineStart, visibleCharStart)
+                    canvas.drawText(safeText, visibleCharStart, visibleCharEnd, paddingLeft + offsetX, lineBaseline.toFloat(), paint)
+                }.onFailure { it.printStackTrace() }
+                continue
+            }
 
             if (lineStart >= textLength) continue
-            if (lineVisibleEnd > textLength) continue
+            if (lineEnd > textLength) continue
 
-            // @Reference to LYS86 (https://github.com/LYS86) by SuperMonster003 on Apr 17, 2025.
-            //  ! https://github.com/LYS86/AutoJs/blob/05a7e48a8d5b0c6207b3d2974f762c050156298c/app/src/main/java/org/autojs/autojs/ui/edit/editor/CodeEditText.java#L232
-            if (lineStart == lineVisibleEnd) continue
+            // If this is an empty line (or the line only contains line-break chars), skip drawing.
+            // zh-CN: 如果这是空白行 (或该行只包含换行字符), 则跳过绘制.
+            if (lineStart >= lineEnd) continue
 
-            val lineEnd = lineVisibleEnd.coerceAtMost(highlightTokens.colors.size)
+            val localColors = highlightTokens.colors
 
             val visibleCharStart = getVisibleCharIndex(paint, scrollX, lineStart, lineEnd)
             var visibleCharEnd = getVisibleCharIndex(paint, scrollX + mParentScrollView!!.width, lineStart, lineEnd) + 1
-
-            val safeText = text ?: continue
-            val localColors = highlightTokens.colors
 
             if (visibleCharStart >= visibleCharEnd) continue
             if (visibleCharStart >= safeText.length) continue
@@ -290,7 +488,7 @@ class CodeEditText : AppCompatEditText {
             }
             paint.color = previousColor
 
-            visibleCharEnd = visibleCharEnd.coerceAtMost(textLength)
+            visibleCharEnd = minOf(visibleCharEnd.coerceAtMost(textLength), lineEnd)
             if (previousColorPos >= visibleCharEnd) continue
 
             val currentText = text ?: continue
@@ -302,8 +500,8 @@ class CodeEditText : AppCompatEditText {
             }
 
             runCatching {
-                val offsetX = paint.measureText(currentText, lineStart, previousColorPos)
-                canvas.drawText(currentText, previousColorPos, visibleCharEnd, paddingLeft + offsetX, lineBaseline.toFloat(), paint)
+                val offsetX = paint.measureText(safeText, lineStart, previousColorPos)
+                canvas.drawText(safeText, previousColorPos, visibleCharEnd, paddingLeft + offsetX, lineBaseline.toFloat(), paint)
             }.onFailure {
                 it.printStackTrace()
                 runCatching {
@@ -359,14 +557,58 @@ class CodeEditText : AppCompatEditText {
     }
 
     override fun onSelectionChanged(selStart: Int, selEnd: Int) {
-        // 调用父类的 onSelectionChanged 时会发送一个 AccessibilityEvent, 当文本过大时造成异常
-        // super.onSelectionChanged(selStart, selEnd);
-        // 父类构造函数会调用 onSelectionChanged, 此时 mCursorChangeCallbacks 还没有初始化
-        super.onSelectionChanged(selStart, selEnd)
+        // Skip selection callbacks during bulk loading to keep UI responsive.
+        // zh-CN: 批量加载期间跳过 selection 回调, 以保持 UI 响应.
+        if (mLoadingText) {
+            super.onSelectionChanged(selStart, selEnd)
+            return
+        }
+
+        // Update accessibility importance when selection changes (input usually changes selection).
+        // zh-CN: selection 变化时更新无障碍重要性 (输入通常会改变 selection).
+        updateAccessibilityImportanceIfNeeded()
+
+        // Avoid sending large accessibility events for huge text on every keystroke.
+        // zh-CN: 避免在超大文本下每次按键都发送巨大的无障碍事件.
+        if (shouldSuppressAccessibilityForLargeText()) {
+            // Do NOT call super.onSelectionChanged() here because it may dispatch
+            // TYPE_VIEW_TEXT_SELECTION_CHANGED with huge payload and cause Binder TTLE.
+            // zh-CN:
+            // 此处不要调用 super.onSelectionChanged(),
+            // 因其可能派发携带巨大负载的 TYPE_VIEW_TEXT_SELECTION_CHANGED,
+            // 从而导致 Binder TTLE.
+        } else {
+            // 调用父类的 onSelectionChanged 时会发送一个 AccessibilityEvent, 当文本过大时造成异常
+            // super.onSelectionChanged(selStart, selEnd);
+            // 父类构造函数会调用 onSelectionChanged, 此时 mCursorChangeCallbacks 还没有初始化
+            super.onSelectionChanged(selStart, selEnd)
+        }
+
         mCursorChangeCallbacks?.let { it.takeUnless { it.isEmpty() } } ?: return
         if (selStart != selEnd) return
         callCursorChangeCallback(text, selStart)
         matchesBracket(text, selStart)
+    }
+
+    override fun sendAccessibilityEventUnchecked(event: AccessibilityEvent) {
+        // Guardrail: drop or shrink accessibility payload when text is huge.
+        // zh-CN: 护栏: 文本很大时丢弃或瘦身无障碍事件负载.
+        if (shouldSuppressAccessibilityForLargeText()) {
+            // Clear potentially huge text payload to avoid Binder transaction overflow.
+            // zh-CN: 清空可能非常大的 text 负载, 避免 Binder 事务溢出.
+            runCatching { event.text.clear() }
+            runCatching { event.contentDescription = null }
+
+            // Also drop selection-changed events entirely in large-text mode to avoid TransactionTooLargeException.
+            // zh-CN: 大文本模式下直接丢弃 selection-changed 事件以避免 TransactionTooLargeException.
+            when (event.eventType) {
+                AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> return
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> return
+                AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY -> return
+                else -> Unit
+            }
+        }
+        super.sendAccessibilityEventUnchecked(event)
     }
 
     private fun matchesBracket(text: CharSequence?, cursor: Int) {
@@ -423,6 +665,13 @@ class CodeEditText : AppCompatEditText {
 
     fun removeCursorChangeCallback(callback: CursorChangeCallback) = mCursorChangeCallbacks!!.remove(callback)
 
+    // Clear syntax highlight tokens and redraw with plain text.
+    // zh-CN: 清空语法高亮 tokens, 并用纯文本方式重绘.
+    fun clearHighlightTokens() {
+        mHighlightTokens = null
+        postInvalidate()
+    }
+
     fun updateHighlightTokens(highlightTokens: HighlightTokens) {
         if (mHighlightTokens != null && mHighlightTokens!!.id >= highlightTokens.id) {
             return
@@ -466,6 +715,12 @@ class CodeEditText : AppCompatEditText {
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // Notify outer layer early when user touches inside text area (not gutter).
+        // zh-CN: 当用户触摸文本区域 (非行号区域) 时尽早通知外层.
+        if (event.action == MotionEvent.ACTION_DOWN && event.x >= paddingLeft) {
+            onUserTouchInTextArea?.invoke()
+        }
+
         // 如果行号区域被按下
         if (event.action == MotionEvent.ACTION_DOWN && event.x < paddingLeft) {
             // 则计算当前行, 如果行号有效, 记录起来
@@ -515,10 +770,26 @@ class CodeEditText : AppCompatEditText {
         invalidate()
     }
 
-    companion object {
-
-        const val TAG = "CodeEditText"
-
+    // Whether accessibility should be suppressed for current content size.
+    // zh-CN: 是否需要针对当前内容大小抑制无障碍事件.
+    private fun shouldSuppressAccessibilityForLargeText(): Boolean {
+        val len = text?.length ?: 0
+        return len >= mA11yLargeTextThresholdChars
     }
 
+    // Apply accessibility importance based on current text length.
+    // zh-CN: 根据当前文本长度应用无障碍重要性配置.
+    private fun updateAccessibilityImportanceIfNeeded() {
+        val target = when (shouldSuppressAccessibilityForLargeText()) {
+            true -> IMPORTANT_FOR_ACCESSIBILITY_NO
+            else -> IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
+        if (importantForAccessibility != target) {
+            importantForAccessibility = target
+        }
+    }
+
+    companion object {
+        const val TAG = "CodeEditText"
+    }
 }

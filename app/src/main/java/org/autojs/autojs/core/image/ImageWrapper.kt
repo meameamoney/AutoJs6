@@ -9,8 +9,7 @@ import androidx.core.graphics.get
 import org.autojs.autojs.annotation.ScriptInterface
 import org.autojs.autojs.core.opencv.Mat
 import org.autojs.autojs.core.opencv.OpenCVHelper
-import org.autojs.autojs.core.ref.MonitorResource
-import org.autojs.autojs.core.ref.NativeObjectReference
+import org.autojs.autojs.rhino.extension.AnyExtensions.toRuntimePath
 import org.autojs.autojs.pio.UncheckedIOException
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.Images
@@ -21,10 +20,10 @@ import org.opencv.core.CvType
 import org.opencv.core.Size
 import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
+import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.lang.ref.WeakReference
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Created by Stardust on Nov 25, 2017.
@@ -32,26 +31,20 @@ import java.util.concurrent.atomic.AtomicLong
  * Transformed by SuperMonster003 on May 16, 2023.
  */
 // @Reference to Auto.js Pro 9.3.11 by SuperMonster003 on Dec 20, 2023.
-open class ImageWrapper : Recyclable, MonitorResource {
+open class ImageWrapper : Shootable<ImageWrapper> {
 
     private var mScriptRuntime: ScriptRuntime
 
     private var mMat: Mat? = null
     private var mBgrMat: Mat? = null
     private var mBitmap: Bitmap? = null
-    private var mRef: NativeObjectReference<MonitorResource>? = null
+    private var mMediaImage: Image? = null
     private var mPlane: Image.Plane? = null
 
     private var mWidth = 0
     private var mHeight = 0
     private var mIsRecycled = false
     private var mIsOneShot = false
-
-    private var mId = 0L
-    private val mNextId = AtomicLong()
-
-    var mediaImage: Image? = null
-        private set
 
     val width
         get() = mWidth.also { ensureNotRecycled() }
@@ -62,36 +55,41 @@ open class ImageWrapper : Recyclable, MonitorResource {
     val size
         get() = Size(mWidth.toDouble(), mHeight.toDouble()).also { ensureNotRecycled() }
 
-    val bitmap by lazy {
-        ensureNotRecycled()
-        if (mBitmap == null) {
-            if (mMat != null) {
-                mBitmap = createBitmap(mMat!!.width(), mMat!!.height())
-                Utils.matToBitmap(mMat, mBitmap)
-            } else {
-                mBitmap = mediaImage?.let { toBitmap(it) }
+    val bitmap: Bitmap
+        get() {
+            ensureNotRecycled()
+            if (mBitmap == null) {
+                val mat = mMat
+                if (mat != null) {
+                    val bitmap = createBitmap(mat.width(), mat.height()).also { mBitmap = it }
+                    Utils.matToBitmap(mat, bitmap)
+                } else {
+                    mMediaImage?.let { mBitmap = toBitmap(it) }
+                }
             }
+            return mBitmap ?: throw Exception("Bitmap of ImageWrapper should never be null")
         }
-        return@lazy mBitmap ?: throw Exception("Bitmap of ImageWrapper should never be null")
-    }
 
-    val mat by lazy {
-        ensureNotRecycled()
-        if (mMat != null) {
-            return@lazy mMat!!
+    val mat: Mat
+        get() {
+            ensureNotRecycled()
+            val mat = mMat
+            if (mat != null) {
+                return mat
+            }
+            val bitmap = mBitmap
+            if (bitmap != null) {
+                val newMat = Mat().also { mMat = it }
+                Utils.bitmapToMat(bitmap, newMat)
+                return newMat
+            }
+            if (mMediaImage != null) {
+                val plane = plane ?: throw AssertionError("Image plain is null")
+                plane.buffer.position(0)
+                return Mat(mHeight, mWidth, CvType.CV_8UC4, plane.buffer, plane.rowStride.toLong()).also { mMat = it }
+            }
+            throw AssertionError("Both bitmap and image are null")
         }
-        if (mBitmap != null) {
-            mMat = Mat()
-            Utils.bitmapToMat(mBitmap, mMat)
-            return@lazy mMat!!
-        }
-        if (mediaImage != null) {
-            val plane = plane ?: throw AssertionError("Image plain is null")
-            plane.buffer.position(0)
-            return@lazy Mat(mHeight, mWidth, CvType.CV_8UC4, plane.buffer, plane.rowStride.toLong()).also { mMat = it }
-        }
-        throw AssertionError("Both bitmap and image are null")
-    }
 
     val bgrMat
         get() = Mat().also {
@@ -103,13 +101,12 @@ open class ImageWrapper : Recyclable, MonitorResource {
         private set(plane) {
             mPlane = plane
         }
-        get() = mPlane ?: mediaImage?.planes?.get(0)
+        get() = mPlane ?: mMediaImage?.planes?.get(0)
 
     constructor(scriptRuntime: ScriptRuntime, width: Int, height: Int) : this(scriptRuntime, createBitmap(width, height))
 
     constructor(scriptRuntime: ScriptRuntime, bitmap: Bitmap) {
         mScriptRuntime = scriptRuntime
-        mId = mNextId.incrementAndGet()
         mBitmap = bitmap.also { addToList(it) }
         mWidth = bitmap.width
         mHeight = bitmap.height
@@ -117,7 +114,6 @@ open class ImageWrapper : Recyclable, MonitorResource {
 
     constructor(scriptRuntime: ScriptRuntime, mat: Mat) {
         mScriptRuntime = scriptRuntime
-        mId = mNextId.incrementAndGet()
         mMat = mat.also { addToList(it) }
         mWidth = mat.cols()
         mHeight = mat.rows()
@@ -125,7 +121,6 @@ open class ImageWrapper : Recyclable, MonitorResource {
 
     constructor(scriptRuntime: ScriptRuntime, mat: org.opencv.core.Mat) {
         mScriptRuntime = scriptRuntime
-        mId = mNextId.incrementAndGet()
         mMat = when (mat.nativeObj != 0L) {
             true -> Mat(mat.nativeObj)
             else -> Mat(mat.rows(), mat.cols(), mat.type())
@@ -136,7 +131,6 @@ open class ImageWrapper : Recyclable, MonitorResource {
 
     constructor(scriptRuntime: ScriptRuntime, bitmap: Bitmap, mat: Mat?) {
         mScriptRuntime = scriptRuntime
-        mId = mNextId.incrementAndGet()
         mMat = mat?.also { addToList(it) }
         mBitmap = bitmap.also { addToList(it) }
         mWidth = bitmap.width
@@ -145,10 +139,21 @@ open class ImageWrapper : Recyclable, MonitorResource {
 
     constructor(scriptRuntime: ScriptRuntime, mediaImage: Image) {
         mScriptRuntime = scriptRuntime
-        mId = mNextId.incrementAndGet()
-        this.mediaImage = mediaImage.also { addToList(it) }
         mWidth = mediaImage.width
         mHeight = mediaImage.height
+
+        // Detach from ImageReader lifecycle by copying pixels immediately.
+        // zh-CN: 通过立即拷贝像素来与 ImageReader 的生命周期解耦.
+        mBitmap = toBitmap(mediaImage).also { addToList(it) }
+
+        // Close the original Image ASAP to avoid holding unstable buffers.
+        // zh-CN: 尽快关闭原始 Image, 避免持有不稳定的底层 buffer.
+        mediaImage.close()
+
+        // Keep media references null after detaching.
+        // zh-CN: 解耦后不再保留 media 引用.
+        mMediaImage = null
+        mPlane = null
     }
 
     init {
@@ -161,7 +166,14 @@ open class ImageWrapper : Recyclable, MonitorResource {
 
     fun saveTo(path: String): Boolean {
         ensureNotRecycled()
-        val fullPath = mScriptRuntime.files.nonNullPath(path)
+        val fullPath = path.toRuntimePath(mScriptRuntime, true)
+        val file = File(fullPath)
+        val parentFile = file.parentFile
+        if (parentFile != null && !parentFile.exists()) {
+            if (!parentFile.mkdirs()) {
+                throw RuntimeException("Failed to create directory: ${parentFile.absolutePath}")
+            }
+        }
         if (mBitmap == null) {
             if (mMat != null) {
                 return Imgcodecs.imwrite(fullPath, mMat)
@@ -171,11 +183,10 @@ open class ImageWrapper : Recyclable, MonitorResource {
         return runCatching { saveWithBitmap(fullPath) }.isSuccess
     }
 
-    private fun saveWithBitmap(fullPath: String?) {
+    private fun saveWithBitmap(fullPath: String) {
         try {
-            fullPath ?: throw Exception("Argument \"path\" cannot be null")
-            mBitmap ?: throw Exception("Member \"bitmap\" cannot be null")
-            mBitmap!!.compress(CompressFormat.PNG, 100, FileOutputStream(fullPath))
+            val bitmap = mBitmap ?: throw Exception("Member \"bitmap\" cannot be null")
+            bitmap.compress(CompressFormat.PNG, 100, FileOutputStream(fullPath))
         } catch (e: FileNotFoundException) {
             throw UncheckedIOException(e)
         }
@@ -261,12 +272,10 @@ open class ImageWrapper : Recyclable, MonitorResource {
                 OpenCVHelper.release(it)
                 mBgrMat = null
             }
-            mediaImage?.let {
+            mMediaImage?.let {
                 it.close()
-                mediaImage = null
-            }
-            mRef?.let {
-                it.pointer = 0L
+                mMediaImage = null
+                mPlane = null
             }
             mIsRecycled = true
         }
@@ -293,12 +302,6 @@ open class ImageWrapper : Recyclable, MonitorResource {
         }
     }
 
-    override fun getPointer() = mId
-
-    override fun setNativeObjectReference(reference: NativeObjectReference<MonitorResource>) {
-        mRef = reference
-    }
-
     companion object {
 
         private val imageList = ArrayList<WeakReference<Any>>()
@@ -308,7 +311,7 @@ open class ImageWrapper : Recyclable, MonitorResource {
         fun recycleAll() {
             imageList.forEach {
                 when (val o = it.get()) {
-                    is Recyclable -> o.recycle()
+                    is Shootable<*> -> o.recycle()
                     is Bitmap -> o.recycle()
                     is org.opencv.core.Mat -> OpenCVHelper.release(o)
                     is Image -> o.close()

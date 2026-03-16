@@ -3,7 +3,6 @@ package org.autojs.autojs.core.http
 import android.util.Log
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 
 /**
  * Created by Stardust on Apr 11, 2018.
@@ -12,42 +11,25 @@ import java.util.concurrent.TimeUnit
 class MutableOkHttp : OkHttpClient() {
 
     private var mTimeout = DEFAULT_TIMEOUT
-    private var mOkHttpClient: OkHttpClient
+    private var mIsInsecure = DEFAULT_IS_INSECURE
+    private lateinit var mOkHttpClient: OkHttpClient
     private val mInterceptors: MutableList<Interceptor> = ArrayList()
 
     @JvmField
     var maxRetries = DEFAULT_MAX_RETRIES
 
-    var timeout: Long
-        get() = mTimeout
-        set(timeout) {
-            mTimeout = timeout
-            muteClient()
-        }
-
     init {
-        mOkHttpClient = newClient(Builder())
         mInterceptors.add(getRetryInterceptor())
+        muteClient(Builder())
     }
 
     fun client() = mOkHttpClient
 
-    private fun newClient(builder: Builder): OkHttpClient {
-        mInterceptors.forEach { if (it !in builder.interceptors()) builder.addInterceptor(it) }
-        return builder
-            .readTimeout(timeout, TimeUnit.MILLISECONDS)
-            .writeTimeout(timeout, TimeUnit.MILLISECONDS)
-            .connectTimeout(timeout, TimeUnit.MILLISECONDS)
-            .build()
-    }
-
     @Synchronized
     fun muteClient(builder: Builder) {
-        mOkHttpClient = newClient(builder)
+        mInterceptors.forEach { if (it !in builder.interceptors()) builder.addInterceptor(it) }
+        mOkHttpClient = builder.build()
     }
-
-    @Synchronized
-    private fun muteClient() = muteClient(mOkHttpClient.newBuilder())
 
     private fun getRetryInterceptor() = Interceptor { chain ->
 
@@ -66,16 +48,18 @@ class MutableOkHttp : OkHttpClient() {
         response
     }
 
+    @Suppress("MayBeConstant")
     companion object {
 
         private val TAG = MutableOkHttp::class.java.simpleName
 
         @JvmField
-        @Suppress("MayBeConstant")
         val DEFAULT_TIMEOUT = 30 * 1000L
 
         @JvmField
-        @Suppress("MayBeConstant")
+        val DEFAULT_IS_INSECURE = false
+
+        @JvmField
         val DEFAULT_MAX_RETRIES = 3
 
     }

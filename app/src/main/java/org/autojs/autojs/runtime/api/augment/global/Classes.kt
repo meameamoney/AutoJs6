@@ -45,6 +45,9 @@ class Classes {
     val PorterDuff = android.graphics.PorterDuff::class
 
     @JvmField
+    val Typeface = android.graphics.Typeface::class
+
+    @JvmField
     val ColorDrawable = android.graphics.drawable.ColorDrawable::class
 
     @JvmField
@@ -458,8 +461,9 @@ class Classes {
     @JvmField
     val JsWebView = org.autojs.autojs.core.ui.widget.JsWebView::class
 
-    @JvmField
-    val Canvas = org.autojs.autojs.core.graphics.ScriptCanvas::class
+    // @Comment by SuperMonster003 on Jan 3, 2026.
+    //  # @JvmField
+    //  # val Canvas = org.autojs.autojs.core.graphics.ScriptCanvas::class
 
     @JvmField
     val EvaluatorException = org.mozilla.javascript.EvaluatorException::class

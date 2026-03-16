@@ -3,8 +3,9 @@ package org.autojs.autojs.pio
 import android.content.Context
 import android.content.res.AssetManager
 import android.text.TextUtils
+import org.autojs.autojs.annotation.ReservedForCompatibility
 import org.autojs.autojs.app.GlobalAppContext
-import org.autojs.autojs.core.pref.Language
+import org.autojs.autojs.runtime.api.augment.converter.core.Bytes
 import org.autojs.autojs.tool.Func1
 import org.autojs.autojs.util.EnvironmentUtils
 import org.autojs.autojs.util.FileUtils
@@ -19,8 +20,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.Charset
-import kotlin.math.ln
-import kotlin.math.pow
+import java.util.Locale
 
 /**
  * Created by Stardust on Apr 1, 2017.
@@ -60,14 +60,9 @@ object PFiles {
     @JvmStatic
     fun create(path: String): Boolean {
         val f = File(path)
-        return if (path.endsWith(separator)) {
-            f.mkdir()
-        } else {
-            try {
-                f.createNewFile()
-            } catch (e: IOException) {
-                false
-            }
+        return when {
+            path.endsWith(separator) -> f.mkdir()
+            else -> runCatching { f.createNewFile() }.isSuccess
         }
     }
 
@@ -95,7 +90,7 @@ object PFiles {
     fun ensureDir(path: String): Boolean {
         val i = path.lastIndexOf(separator)
         return if (i >= 0) {
-            val folder = path.substring(0, i)
+            val folder = path.take(i)
             val file = File(folder)
             file.exists() || file.mkdirs()
         } else false
@@ -355,7 +350,7 @@ object PFiles {
         val fileName = getName(filePath)
         var b = fileName.lastIndexOf('.')
         if (b < 0) b = fileName.length
-        return fileName.substring(0, b)
+        return fileName.take(b)
     }
 
     fun copyAssetToTmpFile(context: Context, path: String): File {
@@ -374,12 +369,52 @@ object PFiles {
     }
 
     @JvmStatic
-    fun deleteRecursively(file: File): Boolean {
-        if (file.isFile) return file.delete()
-        val children = file.listFiles()
-        if (children != null) {
+    @JvmOverloads
+    fun deleteRecursivelyOlderThan(file: File, maxAgeMs: Long, now: Long = System.currentTimeMillis()): Boolean {
+        if (!file.exists()) return true
+
+        var ok = true
+
+        if (file.isDirectory) {
+            val dirLastModified = file.lastModified()
+            val children = file.listFiles() ?: return false
+
             for (child in children) {
-                if (!deleteRecursively(child)) return false
+                val childResult = deleteRecursivelyOlderThan(child, maxAgeMs, now)
+                if (!childResult) {
+                    ok = false
+                }
+            }
+
+            val remaining = file.listFiles()
+            val isEmpty = (remaining != null && remaining.isEmpty())
+
+            if (isEmpty) {
+                val age = now - dirLastModified
+                if (age >= maxAgeMs) {
+                    ok = runCatching { file.delete() }.getOrDefault(false) && ok
+                }
+            }
+            return ok
+        }
+
+        val age = now - file.lastModified()
+        if (age < maxAgeMs) return true
+
+        val deleted = runCatching { file.delete() }.getOrDefault(false)
+        return deleted && ok
+    }
+
+    @JvmStatic
+    fun deleteRecursively(file: File): Boolean {
+        if (file.isDirectory()) {
+            val children = file.listFiles()
+            if (children != null) {
+                for (child in children) {
+                    if (!deleteRecursively(child)) {
+                        return false
+                    }
+                }
             }
         }
         return file.delete()
@@ -450,14 +485,50 @@ object PFiles {
     }
 
     @JvmStatic
-    fun getHumanReadableSize(bytes: Long): String {
-        val unit = 1024
-        if (bytes < unit) return "$bytes B"
-        val exp = (ln(bytes.toDouble()) / ln(unit.toDouble())).toInt()
+    @JvmOverloads
+    @ReservedForCompatibility
+    fun getHumanReadableSize(bytes: Long, useIecIdentifier: Boolean = false): String {
+        return Bytes.string(
+            source = bytes.toDouble(),
+            fromUnit = "B",
+            toUnit = "AUTO",
+            useIecIdentifier = useIecIdentifier,
+            useSpace = true,
+            fractionDigits = 1,
+            trimTrailingZero = false,
+            signature = "PFiles.getHumanReadableSize",
+        )
+    }
 
-        @Suppress("SpellCheckingInspection")
-        val pre = "KMGTPE".substring(exp - 1, exp)
-        return String.format(Language.getPrefLanguage().locale, "%.1f %sB", bytes / unit.toDouble().pow(exp.toDouble()), pre)
+    @JvmStatic
+    @Suppress("LocalVariableName")
+    fun formatSizeWithUnit(bytes: Long): String {
+
+        require(bytes >= 0) {
+            "Argument \"bytes\" for \"formatSizeWithUnit\" must be non-negative instead of $bytes."
+        }
+
+        val locale = Locale.getDefault()
+
+        val b = bytes.toDouble()
+
+        val KiB = 1024.0
+        val MiB = KiB * 1024.0
+        val GiB = MiB * 1024.0
+        val TiB = GiB * 1024.0
+
+        return when {
+            bytes < 1000L ->
+                String.format(locale, "%.0f B", b)
+            bytes < 1000L * 1024L ->
+                String.format(locale, "%.1f KiB", b / KiB)
+            bytes < 1000L * 1024L * 1024L ->
+                String.format(locale, "%.2f MiB", b / MiB)
+            bytes < 1000L * 1024L * 1024L * 1024L ->
+                String.format(locale, "%.2f GiB", b / GiB)
+            else ->
+                String.format(locale, "%.2f TiB", b / TiB)
+        }
     }
 
     @JvmStatic
@@ -511,10 +582,6 @@ object PFiles {
 
     @JvmStatic
     fun closeSilently(closeable: Closeable?) {
-        try {
-            closeable?.close()
-        } catch (ignored: IOException) {
-            /* Ignored. */
-        }
+        runCatching { closeable?.close() }
     }
 }

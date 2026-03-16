@@ -1,8 +1,8 @@
 package org.autojs.autojs.runtime.api.augment.pinyin
 
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsUnwrapped
-import org.autojs.autojs.extension.ScriptableObjectExtensions.inquire
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsUnwrapped
+import org.autojs.autojs.rhino.extension.ScriptableObjectExtensions.inquire
 import org.autojs.autojs.util.RhinoUtils.coerceBoolean
 import org.autojs.autojs.util.RhinoUtils.coerceString
 import org.autojs.autojs.util.RhinoUtils.newNativeObject
@@ -36,7 +36,7 @@ object PinyinCore {
 
     /**
      * @param hansArg 要转为拼音的目标字符串 (汉字).
-     * @param options 可选, 用于指定拼音风格, 是否启用多音字.
+     * @param options 可选, 用于指定拼音风格, 是否启用多音字等.
      * @return 返回的拼音列表.
      */
     fun convert(hansArg: String, options: NativeObject = newNativeObject()): MutableList<List<String>> {

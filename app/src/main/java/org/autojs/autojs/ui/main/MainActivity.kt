@@ -6,13 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.Process
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.forEach
@@ -21,27 +19,22 @@ import androidx.fragment.app.Fragment
 import androidx.viewpager.widget.ViewPager
 import androidx.viewpager.widget.ViewPager.SimpleOnPageChangeListener
 import com.google.android.material.tabs.TabLayout
-import com.huaban.analysis.jieba.CharsDictionaryDatabase
-import com.huaban.analysis.jieba.PhrasesDictionaryDatabase
-import com.huaban.analysis.jieba.WordDictionaryDatabase
-import org.autojs.autojs.AutoJs
 import org.autojs.autojs.app.FragmentPagerAdapterBuilder
 import org.autojs.autojs.app.FragmentPagerAdapterBuilder.StoredFragmentPagerAdapter
 import org.autojs.autojs.app.OnActivityResultDelegate
 import org.autojs.autojs.app.OnActivityResultDelegate.DelegateHost
 import org.autojs.autojs.core.accessibility.AccessibilityTool
-import org.autojs.autojs.core.image.capture.ScreenCapturerForegroundService
 import org.autojs.autojs.core.permission.RequestPermissionCallbacks
 import org.autojs.autojs.core.pref.Pref
 import org.autojs.autojs.event.BackPressedHandler
 import org.autojs.autojs.event.BackPressedHandler.DoublePressExit
 import org.autojs.autojs.event.BackPressedHandler.HostActivity
-import org.autojs.autojs.extension.ViewExtensions.setOnTitleViewLongClickListener
 import org.autojs.autojs.model.explorer.Explorers
+import org.autojs.autojs.permission.AbleToUrge
+import org.autojs.autojs.permission.AllFilesAccessPermission
 import org.autojs.autojs.permission.DisplayOverOtherAppsPermission
-import org.autojs.autojs.permission.ManageAllFilesPermission
 import org.autojs.autojs.permission.PostNotificationsPermission
-import org.autojs.autojs.runtime.api.WrappedShizuku
+import org.autojs.autojs.runtime.api.Permissions
 import org.autojs.autojs.service.ForegroundService
 import org.autojs.autojs.theme.ThemeColorManager
 import org.autojs.autojs.theme.ThemeColorManager.addViewBackground
@@ -49,35 +42,75 @@ import org.autojs.autojs.theme.widget.ThemeColorFloatingActionButton
 import org.autojs.autojs.theme.widget.ThemeColorToolbar
 import org.autojs.autojs.ui.BaseActivity
 import org.autojs.autojs.ui.doc.DocumentationFragment
-import org.autojs.autojs.ui.enhancedfloaty.FloatyService
 import org.autojs.autojs.ui.explorer.ExplorerView
 import org.autojs.autojs.ui.floating.FloatyWindowManger
 import org.autojs.autojs.ui.log.LogActivity
 import org.autojs.autojs.ui.main.drawer.DrawerFragment.Companion.Event.OnDrawerClosed
 import org.autojs.autojs.ui.main.drawer.DrawerFragment.Companion.Event.OnDrawerOpened
+import org.autojs.autojs.ui.main.plugin.PluginFragment
 import org.autojs.autojs.ui.main.scripts.ExplorerFragment
 import org.autojs.autojs.ui.main.task.TaskManagerFragment
 import org.autojs.autojs.ui.settings.PreferencesActivity
 import org.autojs.autojs.ui.widget.DrawerAutoClose
 import org.autojs.autojs.ui.widget.SearchViewItem
+import org.autojs.autojs.util.IntentUtils
+import org.autojs.autojs.util.IntentUtils.startSafely
 import org.autojs.autojs.util.StringUtils.key
 import org.autojs.autojs.util.UpdateUtils
 import org.autojs.autojs.util.ViewUtils
+import org.autojs.autojs.util.ViewUtils.excludeFloatingActionButtonFromBottomNavigationBar
 import org.autojs.autojs.util.ViewUtils.onceGlobalLayout
 import org.autojs.autojs.util.ViewUtils.setMenuIconsColorByThemeColorLuminance
 import org.autojs.autojs.util.ViewUtils.setNavigationIconColorByThemeColorLuminance
+import org.autojs.autojs.util.ViewUtils.setOnTitleViewLongClickListener
 import org.autojs.autojs.util.WorkingDirectoryUtils
 import org.autojs.autojs6.R
 import org.autojs.autojs6.databinding.ActivityMainBinding
 import org.greenrobot.eventbus.EventBus
 
 /**
- * Modified by SuperMonster003 as of Dec 1, 2021.
  * Transformed by SuperMonster003 on May 11, 2023.
+ * Modified by SuperMonster003 as of Jan 26, 2026.
  */
 class MainActivity : BaseActivity(), DelegateHost, HostActivity {
 
     override val handleStatusBarThemeColorAutomatically = false
+
+    private val mBackPressedCallback = object : OnBackPressedCallback(true) {
+
+        // override fun onBackPressed() {
+        //     val fragment = mPagerAdapter.getStoredFragment(mViewPager.currentItem)
+        //     if ((fragment as? BackPressedHandler)?.onBackPressed(this) == true) {
+        //         return
+        //     }
+        //     if (!mBackPressObserver.onBackPressed(this)) {
+        //         @Suppress("DEPRECATION")
+        //         super.onBackPressed()
+        //     }
+        // }
+
+        override fun handleOnBackPressed() {
+            val fragment = mPagerAdapter.getStoredFragment(mViewPager.currentItem)
+
+            // 1. First, let the current page Fragment handle it.
+            // zh-CN: 先给当前页 Fragment 处理.
+            if ((fragment as? BackPressedHandler)?.onBackPressed(this@MainActivity) == true) {
+                return
+            }
+
+            // 2. Then, let the global Observer handle it (DrawerAutoClose / DoublePressExit).
+            // zh-CN: 再给全局 Observer 处理 (DrawerAutoClose / DoublePressExit).
+            if (mBackPressedObserver.onBackPressed(this@MainActivity)) {
+                return
+            }
+
+            // 3. Return to the system default back behavior (finish / popBackStack, etc.).
+            // zh-CN: 交还系统默认返回 (finish / popBackStack 等).
+            isEnabled = false
+            onBackPressedDispatcher.onBackPressed()
+            isEnabled = true
+        }
+    }
 
     private lateinit var mViewPager: ViewPager
     private lateinit var mFab: ThemeColorFloatingActionButton
@@ -90,7 +123,7 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
 
     private val mActivityResultMediator = OnActivityResultDelegate.Mediator()
     private val mRequestPermissionCallbacks = RequestPermissionCallbacks()
-    private val mBackPressObserver = BackPressedHandler.Observer()
+    private val mBackPressedObserver = BackPressedHandler.Observer()
     private val mForeGroundService = ForegroundService(this)
     private var mSearchViewItem: SearchViewItem? = null
     private val mA11yTool = AccessibilityTool(this)
@@ -106,6 +139,9 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
 
     val docsItemIndex: Int
         get() = findPageIndexByTitle(R.string.text_documentation)
+
+    val pluginsIndex: Int
+        get() = findPageIndexByTitle(R.string.text_plugins)
 
     private fun findPageIndexByTitle(titleRes: Int): Int {
         var i = 0
@@ -126,13 +162,15 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
             val drawerLayout = it.drawerLayout
             setContentView(it.root)
             mViewPager = it.viewpager
-            mFab = it.fab.apply { ViewUtils.excludeFloatingActionButtonFromBottomNavigationBar(this) }
+            mFab = it.fab.apply { excludeFloatingActionButtonFromBottomNavigationBar() }
             mTab = it.tab
             mToolbar = it.toolbar
             addViewBackground(it.appBar)
             setUpToolbar(drawerLayout)
             setUpTabViewPager(it)
             registerBackPressHandlers(drawerLayout)
+
+            onBackPressedDispatcher.addCallback(this, mBackPressedCallback)
         }
 
         Pref.registerOnSharedPreferenceChangeListener { _, key ->
@@ -141,25 +179,36 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
             }
         }
 
+        Permissions.registerRequestMultiplePermissionsLauncher(this)
+
         WorkingDirectoryUtils.determineIfNeeded()
         ExplorerView.clearViewStates()
 
         FloatyWindowManger.refreshCircularMenuIfNeeded(this)
 
-        PostNotificationsPermission(this).urgeIfNeeded()
-        ManageAllFilesPermission(this).urgeIfNeeded()
-        DisplayOverOtherAppsPermission(this).urgeIfNeeded()
+        listOf<AbleToUrge>(
+            PostNotificationsPermission(this),
+            AllFilesAccessPermission(this),
+            DisplayOverOtherAppsPermission(this),
+        ).forEach { it.urgeIfNeeded() }
     }
 
     override fun onPostResume() {
         recreateIfNeeded()
         UpdateUtils.autoCheckForUpdatesIfNeededWithSnackbar(this)
+        IntentUtils.App.runAfterRestartIfNeeded(this)
         super.onPostResume()
     }
 
     override fun onStart() {
         super.onStart()
-        WrappedShizuku.bindUserServiceIfNeeded()
+        // @Hint by SuperMonster003 on Dec 24, 2025.
+        //  ! Avoid binding Shizuku user service on app start.
+        //  ! It may spawn root user-service processes repeatedly during IDE "Run" (force-stop + relaunch).
+        //  ! zh-CN:
+        //  ! 避免在应用启动时绑定 Shizuku user service.
+        //  ! IDE "Run" (force-stop + relaunch) 期间可能反复拉起 root user-service 进程.
+        //  # WrappedShizuku.bindUserServiceIfNeeded()
     }
 
     private fun recreateIfNeeded() {
@@ -171,8 +220,8 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
     }
 
     private fun registerBackPressHandlers(drawerLayout: DrawerLayout) {
-        mBackPressObserver.registerHandler(DrawerAutoClose(drawerLayout, Gravity.START))
-        mBackPressObserver.registerHandler(DoublePressExit(this, R.string.text_press_again_to_exit))
+        mBackPressedObserver.registerHandler(DrawerAutoClose(drawerLayout, Gravity.START))
+        mBackPressedObserver.registerHandler(DoublePressExit(this, R.string.text_press_again_to_exit))
     }
 
     private fun setUpToolbar(drawerLayout: DrawerLayout) {
@@ -225,6 +274,7 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
         mPagerAdapter = FragmentPagerAdapterBuilder(this)
             .add(ExplorerFragment(), R.string.text_file)
             .add(DocumentationFragment(), R.string.text_documentation)
+            .add(PluginFragment(), R.string.text_plugins)
             .add(TaskManagerFragment(), R.string.text_task)
             .build()
             .apply {
@@ -295,39 +345,15 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
     }
 
     private fun setUpStatusBarIconLight() {
-        Handler(Looper.getMainLooper()).post {
-            if (sIsActionBarDrawerOpened) {
-                setUpStatusBarIconLightByNightMode()
-            } else {
-                setUpStatusBarIconLightByThemeColor()
-            }
+        when (sIsActionBarDrawerOpened) {
+            true -> setUpStatusBarIconLightByNightMode()
+            else -> setUpStatusBarIconLightByThemeColor()
         }
     }
 
-    fun rebirth() {
-        packageManager.getLaunchIntentForPackage(packageName)?.let {
-            startActivity(Intent.makeRestartActivityTask(it.component))
-        }
-        exitCompletely()
-    }
-
-    fun exitCompletely() {
-        FloatyWindowManger.hideCircularMenuAndSaveState()
-
-        FloatyService.stopService()
-        ScreenCapturerForegroundService.stopService()
-
-        AutoJs.instance.scriptEngineService.stopAll()
-
-        WordDictionaryDatabase.getInstance(applicationContext).close()
-        CharsDictionaryDatabase.getInstance(applicationContext).close()
-        PhrasesDictionaryDatabase.getInstance(applicationContext).close()
-
+    fun beforeExit() {
         mA11yTool.stopService(false)
         mForeGroundService.stopIfNeeded()
-        WrappedShizuku.onDestroy()
-
-        Process.killProcess(Process.myPid())
     }
 
     @Suppress("OVERRIDE_DEPRECATION")
@@ -353,19 +379,7 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
 
     override fun getOnActivityResultDelegateMediator() = mActivityResultMediator
 
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        val fragment = mPagerAdapter.getStoredFragment(mViewPager.currentItem)
-        if ((fragment as? BackPressedHandler)?.onBackPressed(this) == true) {
-            return
-        }
-        if (!mBackPressObserver.onBackPressed(this)) {
-            @Suppress("DEPRECATION")
-            super.onBackPressed()
-        }
-    }
-
-    override fun getBackPressedObserver() = mBackPressObserver
+    override fun getBackPressedObserver() = mBackPressedObserver
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
@@ -466,7 +480,7 @@ class MainActivity : BaseActivity(), DelegateHost, HostActivity {
         var shouldRecreateMainActivity = false
 
         @JvmStatic
-        fun launch(context: Context) = context.startActivity(getIntent(context).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        fun launch(context: Context) = getIntent(context).startSafely(context)
 
         @JvmStatic
         fun getIntent(context: Context?) = Intent(context, MainActivity::class.java)

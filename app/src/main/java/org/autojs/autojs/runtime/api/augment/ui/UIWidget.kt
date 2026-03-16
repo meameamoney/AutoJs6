@@ -2,12 +2,12 @@ package org.autojs.autojs.runtime.api.augment.ui
 
 import android.view.View
 import org.autojs.autojs.annotation.RhinoStandardFunctionInterface
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.FlexibleArray
-import org.autojs.autojs.extension.ScriptableExtensions.hasProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.hasProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
 import org.autojs.autojs.runtime.exception.WrappedIllegalArgumentException
 import org.autojs.autojs.util.RhinoUtils.NOT_CONSTRUCTABLE
 import org.autojs.autojs.util.RhinoUtils.UNDEFINED
@@ -25,7 +25,7 @@ import org.mozilla.javascript.ScriptableObject
 import org.mozilla.javascript.Undefined
 
 @Suppress("unused", "UNUSED_PARAMETER")
-object UIWidget : FlexibleArray() {
+object UIWidget : ArgumentGuards() {
 
     @JvmStatic
     @RhinoStandardFunctionInterface
@@ -123,7 +123,7 @@ object UIWidget : FlexibleArray() {
     @RhinoStandardFunctionInterface
     fun notifyViewCreated(cx: Context, thisObj: Scriptable, args: Array<Any?>, funObj: Function): Undefined = ensureArgumentsOnlyOne(args) { view ->
         require(view is View) {
-            "Argument view for ui.Widget#notifyViewCreated must be a View instead of ${view.jsBrief()}"
+            "Argument \"view\" ${view.jsBrief()} for ui.Widget#notifyViewCreated must be a View"
         }
         val onViewCreatedFunc = thisObj.prop("onViewCreated")
         if (onViewCreatedFunc is BaseFunction) {
@@ -136,7 +136,7 @@ object UIWidget : FlexibleArray() {
     @RhinoStandardFunctionInterface
     fun notifyAfterInflation(cx: Context, thisObj: Scriptable, args: Array<Any?>, funObj: Function): Undefined = ensureArgumentsOnlyOne(args) { view ->
         require(view is View) {
-            "Argument view for ui.Widget#notifyAfterInflation must be a View instead of ${view.jsBrief()}"
+            "Argument \"view\" ${view.jsBrief()} for ui.Widget#notifyAfterInflation must be a View"
         }
         val onFinishInflationFunc = thisObj.prop("onFinishInflation")
         if (onFinishInflationFunc is BaseFunction) {
@@ -147,7 +147,7 @@ object UIWidget : FlexibleArray() {
 
     private fun getAttrsObject(thisObj: Scriptable) = thisObj.prop("__attrs__").also { attrsObject ->
         require(attrsObject is NativeObject) {
-            "Argument __attrs__ for instance of ui.Widget must be a NativeObject instead of ${attrsObject.jsBrief()}"
+            "Argument \"__attrs__\" ${attrsObject.jsBrief()} for instance of ui.Widget must be a NativeObject"
         }
     } as NativeObject
 

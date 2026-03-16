@@ -3,11 +3,11 @@ package org.autojs.autojs.runtime.api.augment.selector
 import org.autojs.autojs.annotation.RhinoRuntimeFunctionInterface
 import org.autojs.autojs.core.accessibility.UiSelector
 import org.autojs.autojs.core.automator.UiObject
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsUnwrapped
-import org.autojs.autojs.extension.FlexibleArray
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
-import org.autojs.autojs.extension.ScriptableExtensions.hasProp
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsUnwrapped
+import org.autojs.autojs.rhino.ArgumentGuards
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.hasProp
 import org.autojs.autojs.runtime.ScriptRuntime
 import org.autojs.autojs.runtime.api.augment.Augmentable
 import org.autojs.autojs.runtime.api.augment.Invokable
@@ -56,7 +56,7 @@ class Selector(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRun
             // @Hint by SuperMonster003 on Jul 25, 2024.
             //  ! For scope binding.
             //  ! zh-CN: 用于绑定作用域.
-            withRhinoContext { cx ->
+            withRhinoContext(scriptRuntime) { cx ->
                 global.defineProp(methodName, newBaseFunction(null, { argList ->
                     val methodKey = coerceString(argList[0])
                     newBaseFunction(methodKey, { arguments ->
@@ -115,7 +115,7 @@ class Selector(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRun
             when {
                 arg !is Double -> arg
                 paramType == Double::class.java || paramType == java.lang.Double.TYPE -> arg
-                paramType == Float::class.java || paramType == java.lang.Float.TYPE -> arg.toDouble()
+                paramType == Float::class.java || paramType == java.lang.Float.TYPE -> arg.toFloat()
                 paramType == Long::class.java || paramType == java.lang.Long.TYPE -> arg.roundToLong()
                 paramType == Int::class.java || paramType == Integer.TYPE -> arg.roundToInt()
                 paramType == Short::class.java || paramType == java.lang.Short.TYPE -> arg.toInt().toShort()
@@ -142,7 +142,7 @@ class Selector(private val scriptRuntime: ScriptRuntime) : Augmentable(scriptRun
     }
 
     @Suppress("SameParameterValue")
-    companion object : FlexibleArray() {
+    companion object : ArgumentGuards() {
 
         private val scopeAugmentMethodBlacklist = listOf(
             UiSelector::plus.name,

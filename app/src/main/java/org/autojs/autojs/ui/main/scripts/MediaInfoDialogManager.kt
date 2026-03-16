@@ -2,6 +2,7 @@ package org.autojs.autojs.ui.main.scripts
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.DialogInterface
 import android.view.LayoutInflater
 import android.view.View.MeasureSpec.UNSPECIFIED
 import android.widget.TextView
@@ -16,12 +17,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.autojs.autojs.extension.MaterialDialogExtensions.makeTextCopyable
-import org.autojs.autojs.extension.MaterialDialogExtensions.setCopyableText
+import org.autojs.autojs.util.DialogUtils.showAdaptive
+import org.autojs.autojs.util.DialogUtils.makeTextCopyable
+import org.autojs.autojs.util.DialogUtils.setCopyableText
 import org.autojs.autojs.model.explorer.ExplorerItem
 import org.autojs.autojs.util.ViewUtils
 import org.autojs.autojs6.R
-import org.autojs.autojs6.databinding.MediaFileInfoDialogListItemBinding
+import org.autojs.autojs6.databinding.MediaFileInfoDialogItemsBinding
 import org.mediainfo.android.MediaInfo
 import org.mediainfo.android.MediaInfo.StreamKind.AUDIO
 import org.mediainfo.android.MediaInfo.StreamKind.GENERAL
@@ -32,9 +34,23 @@ object MediaInfoDialogManager {
     private const val MEDIA_INFO_ERROR_OPENING_FILE = "Error opening file..."
 
     @JvmStatic
+    @JvmOverloads
     @SuppressLint("SetTextI18n")
-    fun showMediaInfoDialog(context: Context, explorerItem: ExplorerItem) {
-        val binding = MediaFileInfoDialogListItemBinding.inflate(LayoutInflater.from(context))
+    fun showMediaInfoDialog(
+        context: Context,
+        explorerItem: ExplorerItem,
+        builderApplier: (MaterialDialog.Builder.() -> Unit)? = null,
+    ) = showMediaInfoDialog(context, explorerItem, builderApplier, null)
+
+    @JvmStatic
+    @SuppressLint("SetTextI18n")
+    fun showMediaInfoDialog(
+        context: Context,
+        explorerItem: ExplorerItem,
+        builderApplier: (MaterialDialog.Builder.() -> Unit)?,
+        onDismissListener: DialogInterface.OnDismissListener?,
+    ) {
+        val binding = MediaFileInfoDialogItemsBinding.inflate(LayoutInflater.from(context))
 
         // Create an independent Scope for the Dialog, bind its lifecycle with the Dialog.
         // zh-CN: 针对 Dialog 独立创建一个 Scope, 生命周期与 Dialog 绑定.
@@ -52,11 +68,16 @@ object MediaInfoDialogManager {
             .onNegative { materialDialog, _ -> materialDialog.dismiss() }
             .neutralText(R.string.ellipsis_six)
             .neutralColorRes(R.color.dialog_button_unavailable)
-            .show()
+            .also { builder -> builderApplier?.invoke(builder) }
+            .build()
             .apply {
                 makeTextCopyable { titleView }
-                setOnDismissListener { scope.cancel() }
+                setOnDismissListener {
+                    scope.cancel()
+                    onDismissListener?.onDismiss(this)
+                }
             }
+            .showAdaptive()
 
         scope.launch {
             val mediaInfo = MediaInfo()
@@ -154,7 +175,7 @@ object MediaInfoDialogManager {
         }
     }
 
-    private fun setViewsAsVideoPlaceholder(binding: MediaFileInfoDialogListItemBinding) {
+    private fun setViewsAsVideoPlaceholder(binding: MediaFileInfoDialogItemsBinding) {
         binding.videoFormatParent.isVisible = true
         binding.bitRateForVideoParent.isVisible = true
         binding.resolutionParent.isVisible = true
@@ -162,7 +183,7 @@ object MediaInfoDialogManager {
         binding.frameRateParent.isVisible = true
     }
 
-    private fun setViewsAsMediaPlaceholder(binding: MediaFileInfoDialogListItemBinding) {
+    private fun setViewsAsMediaPlaceholder(binding: MediaFileInfoDialogItemsBinding) {
         binding.audioFormatParent.isVisible = true
         binding.bitRateForAudioParent.isVisible = true
         binding.albumParent.isVisible = true
@@ -171,16 +192,16 @@ object MediaInfoDialogManager {
     }
 
     @Suppress("UNUSED_PARAMETER", "unused")
-    private fun setViewsAsMediaMenuPlaceholder(binding: MediaFileInfoDialogListItemBinding) {
+    private fun setViewsAsMediaMenuPlaceholder(binding: MediaFileInfoDialogItemsBinding) {
         /* Nothing to do yet. */
     }
 
     @Suppress("UNUSED_PARAMETER", "unused")
-    private fun setViewsAsLeastPlaceholder(binding: MediaFileInfoDialogListItemBinding) {
+    private fun setViewsAsLeastPlaceholder(binding: MediaFileInfoDialogItemsBinding) {
         /* Nothing to do yet. */
     }
 
-    private fun restoreEssentialViews(binding: MediaFileInfoDialogListItemBinding, context: Context) {
+    private fun restoreEssentialViews(binding: MediaFileInfoDialogItemsBinding, context: Context) {
         binding.containerFormatLabel.text = context.getString(R.string.media_info_container_format_label)
         binding.containerFormatColon.isVisible = true
         binding.containerFormatValue.isVisible = true
@@ -201,7 +222,7 @@ object MediaInfoDialogManager {
         }
     }
 
-    private fun updateGuidelines(binding: MediaFileInfoDialogListItemBinding) {
+    private fun updateGuidelines(binding: MediaFileInfoDialogItemsBinding) {
         val filteredBindings = listOf(
             binding.containerFormatLabel to binding.containerFormatGuideline,
             binding.videoFormatLabel to binding.videoFormatGuideline,
@@ -228,7 +249,7 @@ object MediaInfoDialogManager {
         }
     }
 
-    private fun updateSplitLineVisibility(binding: MediaFileInfoDialogListItemBinding) {
+    private fun updateSplitLineVisibility(binding: MediaFileInfoDialogItemsBinding) {
         binding.splitLine.isVisible = listOf(
             binding.bitRateForVideoParent,
             binding.resolutionParent,

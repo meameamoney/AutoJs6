@@ -32,7 +32,8 @@ import org.autojs.autojs.ui.widget.ScrollAwareFABBehavior
 import org.autojs.autojs.util.IntentUtils
 import org.autojs.autojs.util.IntentUtils.SnackExceptionHolder
 import org.autojs.autojs.util.IntentUtils.ToastExceptionHolder
-import org.autojs.autojs.util.ViewUtils
+import org.autojs.autojs.util.IntentUtils.startSafely
+import org.autojs.autojs.util.ViewUtils.excludePaddingClippableViewFromBottomNavigationBar
 import org.autojs.autojs6.R
 import org.autojs.autojs6.databinding.FragmentExplorerBinding
 import org.greenrobot.eventbus.EventBus
@@ -73,12 +74,12 @@ class ExplorerFragment : ViewPagerFragment(0), OnFloatingActionButtonClickListen
                     }
                 }
             })
-            explorerView.explorerItemListView?.let { ViewUtils.excludePaddingClippableViewFromBottomNavigationBar(it) }
+            explorerView.explorerItemListView?.excludePaddingClippableViewFromBottomNavigationBar()
         }
         (activity as? MainActivity)?.apply {
             val tabLayout: TabLayout = findViewById(R.id.tab)
-            val docsTab = tabLayout.getTabAt(filesItemIndex)
-            docsTab?.view?.let { setTabViewClickListeners(it) }
+            val filesTab = tabLayout.getTabAt(filesItemIndex)
+            filesTab?.view?.let { setTabViewClickListeners(it) }
         }
         restoreViewStates()
     }
@@ -119,12 +120,13 @@ class ExplorerFragment : ViewPagerFragment(0), OnFloatingActionButtonClickListen
     }
 
     override fun onFabClick(fab: FloatingActionButton) {
-        // initFloatingActionMenuIfNeeded(fab).run { if (isExpanded) collapse() else expand() }
-        initFloatingActionMenuIfNeeded(fab).run { if (shouldCheckExpanded() && !isExpanded) expand() }
+        initFloatingActionMenuIfNeeded(fab).run { if (isExpanded) collapse() else expand() }
     }
 
     private fun initFloatingActionMenuIfNeeded(fab: FloatingActionButton): FloatingActionMenu {
         return mFloatingActionMenu ?: requireActivity().findViewById<FloatingActionMenu>(R.id.floating_action_menu).also { menu ->
+            val locFab = IntArray(2)
+            fab.getLocationOnScreen(locFab)
             menu.state
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(object : SimpleObserver<Boolean?>() {
@@ -139,6 +141,7 @@ class ExplorerFragment : ViewPagerFragment(0), OnFloatingActionButtonClickListen
             menu.layoutParams.runCatching {
                 javaClass.getField("bottomMargin").setInt(this, fab.marginBottom)
             }
+            menu.setToggleFab(fab, locFab)
             mFloatingActionMenu = menu
         }
     }
@@ -215,20 +218,19 @@ class ExplorerFragment : ViewPagerFragment(0), OnFloatingActionButtonClickListen
 
     override fun onClick(button: FloatingActionButton, pos: Int) {
         mExplorerView?.let { view ->
+            val ctx = context ?: return@let
             when (pos) {
-                0 -> ScriptOperations(context, view, view.currentPage)
-                    .newDirectory()
-                1 -> ScriptOperations(context, view, view.currentPage)
-                    .newFile()
-                2 -> ScriptOperations(context, view, view.currentPage)
+                3 -> Intent(ctx, ProjectConfigActivity::class.java)
+                    .putExtra(ProjectConfigActivity.EXTRA_PARENT_DIRECTORY, view.currentPage.path)
+                    .putExtra(ProjectConfigActivity.EXTRA_NEW_PROJECT, true)
+                    .startSafely(ctx)
+                2 -> ScriptOperations(ctx, view, view.currentPage)
                     .importFile()
-                3 -> context?.startActivity(
-                    Intent(context, ProjectConfigActivity::class.java)
-                        .putExtra(ProjectConfigActivity.EXTRA_PARENT_DIRECTORY, view.currentPage.path)
-                        .putExtra(ProjectConfigActivity.EXTRA_NEW_PROJECT, true)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-                else -> {}
+                1 -> ScriptOperations(ctx, view, view.currentPage)
+                    .newFile()
+                0 -> ScriptOperations(ctx, view, view.currentPage)
+                    .newDirectory()
+                else -> Unit
             }
         }
     }

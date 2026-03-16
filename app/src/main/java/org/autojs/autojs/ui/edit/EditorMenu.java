@@ -2,24 +2,29 @@ package org.autojs.autojs.ui.edit;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.text.InputType;
 import android.text.TextUtils;
+import android.view.Menu;
 import android.view.MenuItem;
 import androidx.annotation.Nullable;
 import com.afollestad.materialdialogs.MaterialDialog;
 import io.reactivex.android.schedulers.AndroidSchedulers;
+import kotlin.Unit;
 import org.autojs.autojs.core.pref.Language;
 import org.autojs.autojs.core.pref.Pref;
-import org.autojs.autojs.extension.MaterialDialogExtensions;
 import org.autojs.autojs.model.indices.AndroidClass;
 import org.autojs.autojs.model.indices.ClassSearchingItem;
 import org.autojs.autojs.script.JavaScriptFileSource;
 import org.autojs.autojs.ui.common.NotAskAgainDialog;
 import org.autojs.autojs.ui.edit.editor.CodeEditor;
+import org.autojs.autojs.ui.edit.keyboard.SymbolsSettingsActivity;
 import org.autojs.autojs.ui.main.scripts.EditableFileInfoDialogManager;
 import org.autojs.autojs.ui.project.BuildActivity;
 import org.autojs.autojs.util.ClipboardUtils;
 import org.autojs.autojs.util.ConsoleUtils;
+import org.autojs.autojs.util.DialogUtils;
 import org.autojs.autojs.util.IntentUtils;
 import org.autojs.autojs.util.IntentUtils.ToastExceptionHolder;
 import org.autojs.autojs.util.ViewUtils;
@@ -34,19 +39,58 @@ import static org.autojs.autojs.util.StringUtils.key;
 
 /**
  * Created by Stardust on Sep 28, 2017.
+ * Modified by JetBrains AI Assistant (GPT-5.2) as of Feb 8, 2026.
  */
-@SuppressWarnings("ResultOfMethodCallIgnored")
+@SuppressWarnings({"ResultOfMethodCallIgnored", "unused"})
 @SuppressLint("CheckResult")
 public class EditorMenu {
 
     private final EditorView mEditorView;
     private final Context mContext;
     private final CodeEditor mEditor;
+    private final boolean mReadOnly;
 
     public EditorMenu(EditorView editorView) {
+        this(editorView, false);
+    }
+
+    public EditorMenu(EditorView editorView, boolean readOnly) {
         mEditorView = editorView;
         mContext = editorView.getContext();
         mEditor = editorView.editor;
+        mReadOnly = readOnly;
+    }
+
+    public void prepareOptionsMenu(Menu menu) {
+        if (menu == null) {
+            return;
+        }
+        if (!mReadOnly) {
+            return;
+        }
+        setMenuItemInvisible(menu, R.id.action_find_or_replace);
+        setMenuItemInvisible(menu, R.id.action_copy_line);
+        setMenuItemInvisible(menu, R.id.action_paste);
+        setMenuItemInvisible(menu, R.id.action_delete_line);
+        setMenuItemInvisible(menu, R.id.action_clear);
+        setMenuItemInvisible(menu, R.id.action_comment);
+        setMenuItemInvisible(menu, R.id.action_beautify);
+        setMenuItemInvisible(menu, R.id.action_jump);
+        setMenuItemInvisible(menu, R.id.action_debug);
+        setMenuItemInvisible(menu, R.id.action_build_apk);
+        setMenuItemInvisible(menu, R.id.action_console);
+        setMenuItemInvisible(menu, R.id.action_import_java_class);
+        setMenuItemInvisible(menu, R.id.action_file_details);
+        setMenuItemInvisible(menu, R.id.action_version_history);
+        setMenuItemInvisible(menu, R.id.action_fx_keyboard);
+        setMenuItemInvisible(menu, R.id.action_open_by_other_apps);
+    }
+
+    private void setMenuItemInvisible(Menu menu, int itemId) {
+        MenuItem item = menu.findItem(itemId);
+        if (item != null) {
+            item.setVisible(false);
+        }
     }
 
     public boolean onOptionsItemSelected(MenuItem item) {
@@ -75,7 +119,7 @@ public class EditorMenu {
                     .content(R.string.hint_long_click_run_to_debug)
                     .positiveText(R.string.dialog_button_dismiss)
                     .positiveColorRes(R.color.dialog_button_default);
-            MaterialDialogExtensions.widgetThemeColor(builder);
+            DialogUtils.widgetThemeColor(builder);
             builder.show();
             return tryDoing(mEditorView::debug);
         }
@@ -141,11 +185,19 @@ public class EditorMenu {
             showFileDetails();
             return true;
         }
+        if (itemId == R.id.action_version_history) {
+            showHistory();
+            return true;
+        }
         if (itemId == R.id.action_build_apk) {
             startBuildApkActivity();
             return true;
         }
         return false;
+    }
+
+    private void showHistory() {
+        mEditorView.showVersionHistoryDialog();
     }
 
     private void importJavaPackageOrClass() {
@@ -208,7 +260,22 @@ public class EditorMenu {
     }
 
     private void startBuildApkActivity() {
-        BuildActivity.launch(mContext, mEditorView.uri.getPath());
+        Uri uri = mEditorView.getUri();
+        String path;
+        if (uri == null) {
+            path = null;
+        } else {
+            path = uri.getPath();
+        }
+        if (TextUtils.isEmpty(path)) {
+            DialogUtils.buildAndShowAdaptive(new MaterialDialog.Builder(mContext)
+                    .title(R.string.text_prompt)
+                    .content(R.string.error_unable_to_package_application_as_current_file_path_is_unknown)
+                    .positiveText(R.string.dialog_button_dismiss)
+                    .positiveColorRes(R.color.dialog_button_default)::build);
+            return;
+        }
+        BuildActivity.launch(mContext, path);
     }
 
     private void setPinchToZoomStrategy() {
@@ -248,7 +315,7 @@ public class EditorMenu {
                 .onPositive((dialog, which) -> dialog.dismiss())
                 .autoDismiss(false);
 
-        MaterialDialogExtensions.choiceWidgetThemeColor(builder);
+        DialogUtils.choiceWidgetThemeColor(builder);
 
         // TODO by SuperMonster003 on Oct 17, 2022.
         //  ! Implementation for "scale view".
@@ -265,13 +332,11 @@ public class EditorMenu {
     }
 
     private void startSymbolsSettingsActivity() {
-        // TODO by SuperMonster003 on Oct 16, 2022.
-
-        // new SymbolsSettingsActivity.IntentBuilder(mContext)
-        //         .extra(mEditorView.getUri().getPath())
-        //         .start();
-
-        ViewUtils.showToast(mContext, R.string.text_under_development_content);
+        Intent intent = new Intent(mContext, SymbolsSettingsActivity.class);
+        IntentUtils.startSafely(intent, mContext, true, (t -> {
+            ViewUtils.showToast(mContext, t.getMessage(), true);
+            return Unit.INSTANCE;
+        }));
     }
 
     private boolean onEditOptionsSelected(MenuItem item) {
@@ -297,7 +362,7 @@ public class EditorMenu {
             return tryDoing(() -> mEditor.setText(""));
         }
         if (itemId == R.id.action_comment) {
-            return tryDoing(mEditor.commentHelper::handle);
+            return tryDoing(mEditor.commentHelper::toggle);
         }
         if (itemId == R.id.action_beautify) {
             return tryDoing(mEditorView::beautifyCode);
@@ -330,12 +395,26 @@ public class EditorMenu {
         builder.positiveColorRes(R.color.dialog_button_attraction);
         builder.negativeText(R.string.dialog_button_cancel);
         builder.negativeColorRes(R.color.dialog_button_default);
-        MaterialDialogExtensions.widgetThemeColor(builder);
+        DialogUtils.widgetThemeColor(builder);
         builder.show();
     }
 
     private void showFileDetails() {
-        var path = mEditorView.uri.getPath();
+        Uri uri = mEditorView.getUri();
+        String path;
+        if (uri != null) {
+            path = uri.getPath();
+        } else {
+            path = null;
+        }
+        if (TextUtils.isEmpty(path)) {
+            DialogUtils.buildAndShowAdaptive(new MaterialDialog.Builder(mContext)
+                    .title(R.string.text_prompt)
+                    .content(R.string.error_unable_to_display_file_details_as_current_file_path_is_unknown)
+                    .positiveText(R.string.dialog_button_dismiss)
+                    .positiveColorRes(R.color.dialog_button_default)::build);
+            return;
+        }
         EditableFileInfoDialogManager.showEditableFileInfoDialog(mContext, new File(path), mEditor::getText);
     }
 
@@ -365,8 +444,24 @@ public class EditorMenu {
         mEditor.getSelection()
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(s -> {
-                    FindOrReplaceDialogBuilder builder = new FindOrReplaceDialogBuilder(mContext, mEditorView)
-                            .setQueryIfNotEmpty(s);
+                    // Prefer restoring last search (even after exit search mode).
+                    // zh-CN: 优先恢复 "上一次搜索" (即使已退出搜索模式), 避免 selection (命中内容) 覆盖关键词.
+                    String preferredQuery = mEditorView.getPreferredSearchQueryForDialogOrNull();
+                    boolean preferredRegex = mEditorView.getPreferredSearchUsingRegexForDialog();
+
+                    FindOrReplaceDialogBuilder builder = new FindOrReplaceDialogBuilder(mContext, mEditorView);
+
+                    // Only override regex checkbox when we are restoring an actual previous query.
+                    // Otherwise keep the persisted checkbox state from SharedPreferences (restoreState()).
+                    //
+                    // zh-CN: 仅当我们确实在恢复 "上一次 query" 时才覆盖 regex 勾选状态;
+                    // 否则使用 SharedPreferences 中持久化的勾选状态.
+                    if (preferredQuery != null) {
+                        builder.setUsingRegex(preferredRegex);
+                    }
+
+                    builder.setQueryIfNotEmpty(preferredQuery != null ? preferredQuery : s);
+
                     builder.positiveColorRes(R.color.dialog_button_attraction);
                     builder.show();
                 });
@@ -386,5 +481,4 @@ public class EditorMenu {
         }
         return false;
     }
-
 }

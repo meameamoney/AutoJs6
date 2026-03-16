@@ -1,9 +1,16 @@
 package org.autojs.autojs.util
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.autojs.autojs.project.ProjectConfig
 import org.autojs.autojs.util.FileUtils.TYPE.Companion.TYPE_NAME_PREFIX_REGEX
 import java.io.File
 import java.util.function.Predicate
+import java.util.zip.ZipFile
+import java.util.zip.ZipInputStream
 import kotlin.text.RegexOption.IGNORE_CASE
 
 /**
@@ -37,6 +44,115 @@ object FileUtils {
                 else -> fileName.substring(i + 1)
             }
         }
+    }
+
+    @JvmStatic
+    fun probeApk(file: File): ApkProbeResult {
+        if (!file.isFile || file.length() < 4) {
+            return ApkProbeResult(false, false, false, false, false)
+        }
+        var zipReadable = false
+        var hasManifest = false
+        var hasDex = false
+        var hasArsc = false
+        var hasRes = false
+
+        try {
+            ZipFile(file).use { zip ->
+                zipReadable = true
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val e = entries.nextElement()
+                    val name = e.name
+                    when {
+                        name.equals("AndroidManifest.xml", ignoreCase = false) -> hasManifest = true
+                        name.equals("classes.dex", ignoreCase = false) -> hasDex = true
+                        name.equals("resources.arsc", ignoreCase = false) -> hasArsc = true
+                        // Must be a directory entry, or any entry starting with "res/".
+                        // zh-CN: 需要是目录项, 或存在以 "res/" 开头的任何条目.
+                        name.startsWith("res/") -> hasRes = true
+                    }
+                    if (hasManifest && (hasDex || hasArsc || hasRes)) break
+                }
+            }
+        } catch (_: Throwable) {
+            // Not a valid ZIP or failed to read.
+            // zh-CN: 不是合法 ZIP 或读取失败.
+            zipReadable = false
+        }
+
+        return ApkProbeResult(
+            isZipReadable = zipReadable,
+            hasAndroidManifest = hasManifest,
+            hasClassesDex = hasDex,
+            hasResourcesArsc = hasArsc,
+            hasResDir = hasRes,
+        )
+    }
+
+    @JvmStatic
+    fun isLikelyApk(file: File): Boolean = probeApk(file).isLikelyApk
+
+    @JvmStatic
+    fun isLikelyApk(context: Context, uri: Uri): Boolean {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            ZipInputStream(input).use { zis ->
+                var hasManifest = false
+                var hasDexOrArscOrRes = false
+                var entry = zis.nextEntry
+                while (entry != null) {
+                    val name = entry.name
+                    if (name == "AndroidManifest.xml") hasManifest = true
+                    if (name == "classes.dex" || name == "resources.arsc" || name.startsWith("res/")) {
+                        hasDexOrArscOrRes = true
+                    }
+                    if (hasManifest && hasDexOrArscOrRes) return true
+                    entry = zis.nextEntry
+                }
+            }
+        }
+        return false
+    }
+
+    @JvmStatic
+    fun areSamePath(a: File, b: File): Boolean =
+        runCatching {
+            a.getCanonicalPath() == b.getCanonicalPath()
+        }.getOrNull() ?: (a.absolutePath == b.absolutePath)
+
+    suspend fun Uri.toCacheFile(
+        context: Context,
+        subDir: String = "from_uri",
+        preferName: String? = null,
+    ): File = withContext(Dispatchers.IO) {
+        val uri = this@toCacheFile
+        val dir = File(context.cacheDir, subDir).apply { if (!exists()) mkdirs() }
+
+        val finalName = preferName
+            ?: run getNameFromMeta@{
+                context.contentResolver.query(
+                    /* uri = */ uri,
+                    /* projection = */ arrayOf(OpenableColumns.DISPLAY_NAME),
+                    /* selection = */ null,
+                    /* selectionArgs = */ null,
+                    /* sortOrder = */ null,
+                )?.use { cursor ->
+                    val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+                }
+            }
+            ?: uri.lastPathSegment?.substringAfterLast('/')
+            ?: "temp_${System.currentTimeMillis()}"
+
+        val outFile = File(dir, finalName)
+
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            outFile.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        } ?: error("Unable to open input stream for uri: $uri")
+
+        outFile
     }
 
     private fun withRegexPrefix(regexGetter: () -> String) = TYPE_NAME_PREFIX_REGEX + regexGetter.invoke()
@@ -2907,7 +3023,8 @@ object FileUtils {
 
     }
 
-    private fun File.isMpeg2TsLike(): Boolean {
+    @JvmStatic
+    fun File.isMpeg2TsLike(): Boolean {
         val magicByte = 0x47.toByte()
         val tsPacketSize = 188
         return runCatching {
@@ -2921,29 +3038,35 @@ object FileUtils {
         }.getOrElse { false }
     }
 
-    private fun File.isTypeScriptLike(): Boolean {
+    @JvmStatic
+    fun File.isTypeScriptLike(): Boolean {
         return checkStartsWith("function", "import", "export", "interface", "class")
     }
 
-    private fun File.isObjectiveCLike(): Boolean {
+    @JvmStatic
+    fun File.isObjectiveCLike(): Boolean {
         return checkContains("@interface", "@implementation", "#import")
     }
 
-    private fun File.isMatlabLike(): Boolean {
+    @JvmStatic
+    fun File.isMatlabLike(): Boolean {
         return checkStartsWith("function", "%", "end")
     }
 
-    private fun File.isGenerateDataLike(): Boolean {
+    @JvmStatic
+    fun File.isGenerateDataLike(): Boolean {
         return checkStartsWith("DATA", "INFO", "HEADER", "META", "RECORD", "BINARY")
                 || checkContains("DATA_TYPE", "VERSION", "FORMAT")
     }
 
-    private fun File.isWavefrontObjLike(): Boolean {
+    @JvmStatic
+    fun File.isWavefrontObjLike(): Boolean {
         return checkContains("Wavefront", "mtllib", "3ds max")
                 || checkRegex(Regex("^v\\s+-?\\d"))
     }
 
-    private fun File.isVcdDataLike() = runCatching {
+    @JvmStatic
+    fun File.isVcdDataLike() = runCatching {
         val riffMagicNumber = byteArrayOf(0x52, 0x49, 0x46, 0x46)  // "RIFF"
         this@isVcdDataLike.inputStream().use { inputStream ->
             val buffer = ByteArray(4)
@@ -2952,7 +3075,8 @@ object FileUtils {
         }
     }.getOrElse { false }
 
-    private fun File.isBinArchiveLike() = runCatching {
+    @JvmStatic
+    fun File.isBinArchiveLike() = runCatching {
         val zipMagicNumber = byteArrayOf(0x50.toByte(), 0x4B.toByte(), 0x03.toByte(), 0x04.toByte())
         val gzipMagicNumber = byteArrayOf(0x1F.toByte(), 0x8B.toByte())
         this@isBinArchiveLike.inputStream().use { inputStream ->
@@ -2966,19 +3090,22 @@ object FileUtils {
         false
     }.getOrElse { false }
 
-    private fun File.isBinDiscImageLike() = runCatching {
-        this@isBinDiscImageLike.inputStream().use { inputStream ->
-            val header = ByteArray(2048) // Read first sector
-            if (inputStream.read(header) != header.size) return false
+    @JvmStatic
+    fun File.isBinDiscImageLike(): Boolean =
+        runCatching {
+            this@isBinDiscImageLike.inputStream().use { inputStream ->
+                val header = ByteArray(2048) // Read first sector
+                if (inputStream.read(header) != header.size) return false
 
-            // Check for very basic ISO 9660 primary volume descriptor
-            val pvdDescriptor = "CD001".toByteArray()
-            header.sliceArray(0x800 until 0x800 + pvdDescriptor.size).contentEquals(pvdDescriptor)
-        }
-    }.getOrElse { false }
+                // Check for very basic ISO 9660 primary volume descriptor
+                val pvdDescriptor = "CD001".toByteArray()
+                header.sliceArray(0x800 until 0x800 + pvdDescriptor.size).contentEquals(pvdDescriptor)
+            }
+        }.getOrElse { false }
 
     // Determines if a CUE file describes audio tracks
-    private fun File.isAudioCueSheetLike() = runCatching {
+    @JvmStatic
+    fun File.isAudioCueSheetLike() = runCatching {
         this@isAudioCueSheetLike.useLines { lines ->
             lines.any { line ->
                 line.contains(Regex("""(?i)FILE .* (\.wav|\.mp3|\.flac)""")) || // Checks for common audio extensions
@@ -2988,7 +3115,8 @@ object FileUtils {
     }.getOrElse { false }
 
     // Determines if a CUE file describes a disk image
-    private fun File.isDiskImageCueSheetLike() = runCatching {
+    @JvmStatic
+    fun File.isDiskImageCueSheetLike() = runCatching {
         this@isDiskImageCueSheetLike.useLines { lines ->
             lines.any { line ->
                 line.contains(Regex("""(?i)FILE .* (\.bin|\.iso)""")) || // Checks for common binary extensions
@@ -2998,7 +3126,8 @@ object FileUtils {
     }.getOrElse { false }
 
     // Determines if an M3U file is likely an audio playlist
-    private fun File.isAudioM3ULike() = runCatching {
+    @JvmStatic
+    fun File.isAudioM3ULike() = runCatching {
         this@isAudioM3ULike.useLines { lines ->
             lines.any { line ->
                 line.contains(Regex("""(?i)\.(mp3|wav|aac|flac|ape|m4a|ogg)$""")) // Checks for common audio file extensions
@@ -3007,7 +3136,8 @@ object FileUtils {
     }.getOrElse { false }
 
     // Determines if an M3U file is likely a video playlist
-    private fun File.isVideoM3ULike() = runCatching {
+    @JvmStatic
+    fun File.isVideoM3ULike() = runCatching {
         this@isVideoM3ULike.useLines { lines ->
             lines.any { line ->
                 line.contains(Regex("""(?i)\.(mp4|avi|mkv|mov|wmv|ts)$""")) // Checks for common video file extensions
@@ -3015,17 +3145,20 @@ object FileUtils {
         }
     }.getOrElse { false }
 
-    private fun File.isProguardConfigLike() = checkContains(
+    @JvmStatic
+    fun File.isProguardConfigLike() = checkContains(
         "-injars", "-outjars", "-libraryjars", "-printmapping", "-overloadaggressively",
         maxLinesToCheck = 200,
     )
 
-    private fun File.isQmakeProjectLike() = checkContains(
+    @JvmStatic
+    fun File.isQmakeProjectLike() = checkContains(
         "TEMPLATE", "TARGET", "CONFIG", "SOURCES", "HEADERS", "RESOURCES", "INCLUDEPATH", "LIBS", "DEFINES",
         maxLinesToCheck = 200,
     )
 
-    private fun File.isMarkdownMDLike() = runCatching {
+    @JvmStatic
+    fun File.isMarkdownMDLike() = runCatching {
         this@isMarkdownMDLike.useLines { lines ->
             lines.any { line ->
                 return@any line.startsWith("#")
@@ -3035,20 +3168,31 @@ object FileUtils {
         }
     }.getOrElse { false }
 
-    private fun File.isSegaMDLike() = runCatching {
-        this@isSegaMDLike.inputStream().use { inputStream ->
-            val header = ByteArray(512) // 假设 SEGA 游戏文件有特定的头部
-            if (inputStream.read(header) != header.size) return false
+    @JvmStatic
+    fun File.isSegaMDLike(): Boolean =
+        runCatching {
+            this@isSegaMDLike.inputStream().use { inputStream ->
+                // Assume SEGA game files have a specific header.
+                // zh-CN: 假设 SEGA 游戏文件有特定的头部.
+                val header = ByteArray(512)
+                if (inputStream.read(header) != header.size) return false
 
-            // 这里你需要根据 SEGA 文件的具体特征来调整条件
-            // 例如: 找到特定的标识符或者模式
-            val segaIdentifier = byteArrayOf(0x53, 0x45, 0x47, 0x41) // 可能的 "SEGA" 标记
-            header.sliceArray(segaIdentifier.indices).contentEquals(segaIdentifier)
-        }
-    }.getOrElse { false }
+                // Here is the modification needed to adjust the conditions based on specific SEGA file characteristics.
+                // This requires identifying specific identifiers or patterns within the header.
+                // zh-CN:
+                // 这里需要根据 SEGA 文件的具体特征来调整条件.
+                // 例如: 找到特定的标识符或者模式.
+
+                // Possible "SEGA" marker.
+                // zh-CN: 可能的 "SEGA" 标记.
+                val segaIdentifier = byteArrayOf(0x53, 0x45, 0x47, 0x41)
+                header.sliceArray(segaIdentifier.indices).contentEquals(segaIdentifier)
+            }
+        }.getOrElse { false }
 
     // Function to check if a file is likely a macro based on scripting patterns found in samples
-    private fun File.isMacroFileLike(): Boolean {
+    @JvmStatic
+    fun File.isMacroFileLike(): Boolean {
         return runCatching {
             this.useLines { lines ->
                 lines.any { line ->
@@ -3069,7 +3213,8 @@ object FileUtils {
     }
 
     // Function to determine if a file is likely a Monkey's Audio (.ape) file
-    private fun File.isMonkeyAudioLike(): Boolean {
+    @JvmStatic
+    fun File.isMonkeyAudioLike(): Boolean {
         return runCatching {
             this.inputStream().use { inputStream ->
                 val header = ByteArray(4)
@@ -3082,7 +3227,8 @@ object FileUtils {
         }.getOrElse { false }
     }
 
-    private fun File.isEbuStlLike(): Boolean {
+    @JvmStatic
+    fun File.isEbuStlLike(): Boolean {
         // EBU - Subtitling data exchange format
         return runCatching {
             this.inputStream().use { inputStream ->
@@ -3116,7 +3262,8 @@ object FileUtils {
         }.getOrElse { false }
     }
 
-    private fun File.isModelStlLike(): Boolean {
+    @JvmStatic
+    fun File.isModelStlLike(): Boolean {
         return runCatching {
             this.inputStream().use { inputStream ->
                 val header = ByteArray(80) // STL binary files start with an 80-byte header
@@ -3146,7 +3293,8 @@ object FileUtils {
         }.getOrElse { false }
     }
 
-    private fun File.isModel3dsLike(): Boolean {
+    @JvmStatic
+    fun File.isModel3dsLike(): Boolean {
         return runCatching {
             this.inputStream().use { inputStream ->
                 val header = ByteArray(2)
@@ -3158,7 +3306,8 @@ object FileUtils {
         }.getOrElse { false }
     }
 
-    private fun File.isNintendo3dsLike(): Boolean {
+    @JvmStatic
+    fun File.isNintendo3dsLike(): Boolean {
         return runCatching {
             this.inputStream().use { inputStream ->
                 val magicBytes = ByteArray(4)
@@ -3242,4 +3391,13 @@ object FileUtils {
      */
     data class CandidateCriterion(val criterion: Predicate<File>, val weight: Int)
 
+    data class ApkProbeResult(
+        val isZipReadable: Boolean,
+        val hasAndroidManifest: Boolean,
+        val hasClassesDex: Boolean,
+        val hasResourcesArsc: Boolean,
+        val hasResDir: Boolean,
+    ) {
+        val isLikelyApk = isZipReadable && hasAndroidManifest && (hasClassesDex || hasResourcesArsc || hasResDir)
+    }
 }

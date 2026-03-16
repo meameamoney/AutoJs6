@@ -6,17 +6,19 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.Parcelable
-import android.util.Log
 import org.autojs.autojs.AutoJs
+import org.autojs.autojs.annotation.RhinoStandardFunctionInterface
 import org.autojs.autojs.core.automator.UiObjectCollection
-import org.autojs.autojs.extension.AnyExtensions.isJsNullish
-import org.autojs.autojs.extension.AnyExtensions.jsBrief
-import org.autojs.autojs.extension.AnyExtensions.jsSpecies
-import org.autojs.autojs.extension.AnyExtensions.jsUnwrapped
-import org.autojs.autojs.extension.ScriptableExtensions.defineProp
-import org.autojs.autojs.extension.ScriptableExtensions.prop
+import org.autojs.autojs.engine.RhinoJavaScriptEngine
 import org.autojs.autojs.rhino.TopLevelScope
+import org.autojs.autojs.rhino.extension.AnyExtensions.isJsNullish
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsBrief
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsSpecies
+import org.autojs.autojs.rhino.extension.AnyExtensions.jsUnwrapped
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.defineProp
+import org.autojs.autojs.rhino.extension.ScriptableExtensions.prop
 import org.autojs.autojs.runtime.ScriptRuntime
+import org.autojs.autojs.runtime.api.ScriptPromiseAdapter
 import org.autojs.autojs.runtime.exception.ScriptInterruptedException
 import org.autojs.autojs.runtime.exception.WrappedRuntimeException
 import org.autojs.autojs6.BuildConfig
@@ -51,6 +53,8 @@ import org.mozilla.javascript.Wrapper
 import org.mozilla.javascript.json.JsonParser
 import java.io.Serializable
 import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
+import java.math.BigInteger
 import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -66,15 +70,54 @@ object RhinoUtils {
     const val DEFAULT_CALLER = 0x03
     const val DEFAULT_CONSTRUCTOR = 0x04
 
+    /** [Long]: 2^53 - 1. */
+    const val MAX_SAFE_INT_IEEE754_L = 9_007_199_254_740_991L
+
+    /** [Long]: -(2^53 - 1). */
+    const val MIN_SAFE_INT_IEEE754_L = -9_007_199_254_740_991L
+
+    /** [Double]: 2^53 - 1. */
+    const val MAX_SAFE_INT_IEEE754_D = 9_007_199_254_740_991.0
+
+    /** [Double]: -(2^53 - 1). */
+    const val MIN_SAFE_INT_IEEE754_D = -9_007_199_254_740_991.0
+
+    /** [java.math.BigDecimal]: 2^53 - 1. */
+    val MAX_SAFE_INT_IEEE754_BD = MAX_SAFE_INT_IEEE754_D.toBigDecimal()
+
+    /** [java.math.BigDecimal]: -(2^53 - 1). */
+    val MIN_SAFE_INT_IEEE754_BD = MIN_SAFE_INT_IEEE754_D.toBigDecimal()
+
+    /** [java.math.BigInteger]: 2^53 - 1. */
+    val MAX_SAFE_INT_IEEE754_BI = MAX_SAFE_INT_IEEE754_L.toBigInteger()
+
+    /** [java.math.BigInteger]: -(2^53 - 1). */
+    val MIN_SAFE_INT_IEEE754_BI = MIN_SAFE_INT_IEEE754_L.toBigInteger()
+
     private val TAG = RhinoUtils::class.java.simpleName
+
+    private val STANDARD_OBJECTS_KEY = Any()
 
     @JvmStatic
     val UNDEFINED = Undefined.instance as Undefined
 
     @JvmStatic
+    fun Context.getOrCreateStandardObjects(): ScriptableObject {
+        // Cache standard objects per Context to avoid repeated initStandardObjects().
+        // zh-CN: 按 Context 缓存标准对象, 避免重复调用 initStandardObjects().
+        val cached = this.getThreadLocal(STANDARD_OBJECTS_KEY) as? ScriptableObject
+        if (cached != null) return cached
+        return this.initStandardObjects().also { created ->
+            this.putThreadLocal(STANDARD_OBJECTS_KEY, created)
+        }
+    }
+
+    @JvmStatic
     val standardObjects: ScriptableObject by lazy {
+        // Create a global singleton standard objects as a low-fidelity fallback.
+        // zh-CN: 创建全局单例标准对象, 用作低保真兜底.
         try {
-            Context.enter().initStandardObjects()
+            Context.enter().getOrCreateStandardObjects()
         } finally {
             Context.exit()
         }
@@ -98,89 +141,88 @@ object RhinoUtils {
     }
 
     @JvmStatic
-    fun callGlobalFunction(name: String, paramsToFunction: Array<Any?>): Any? {
-        return callGlobalFunction(null, name, paramsToFunction)
-    }
+    fun callToStringFunction(o: Scriptable): String =
+        Context.toString(callFunction(o, "toString", arrayOf()))
 
     @JvmStatic
-    fun callGlobalFunction(scriptRuntime: ScriptRuntime?, name: String, paramsToFunction: Array<Any?>) = withRhinoContext { cx ->
-        val topLevel = ImporterTopLevel(cx)
-        callFunction(scriptRuntime, topLevel, name, paramsToFunction)
-    }
-
-    @JvmStatic
-    fun callToStringFunction(o: Scriptable): String {
-        return callToStringFunction(null, o)
-    }
-
-    @JvmStatic
-    fun callToStringFunction(scriptRuntime: ScriptRuntime?, o: Scriptable): String = Context.toString(callFunction(scriptRuntime, o, "toString", arrayOf()))
+    fun callToStringFunction(scriptRuntime: ScriptRuntime, o: Scriptable): String =
+        Context.toString(callFunction(scriptRuntime, o, "toString", arrayOf()))
 
     @JvmStatic
     @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
     fun callFunction(obj: Scriptable, name: String, paramsToFunction: Array<Any?>): Any? {
-        return callFunction(null, obj, name, paramsToFunction)
+        val property = obj.prop(name)
+        if (property == NOT_FOUND) throw IllegalArgumentException("Property $name not found on $obj")
+        if (property !is BaseFunction) throw IllegalArgumentException("Property $name on $obj must be a BaseFunction instead of ${property.jsBrief()}")
+        return callFunction(property, obj, obj, paramsToFunction)
     }
 
     @JvmStatic
     @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
-    fun callFunction(scriptRuntime: ScriptRuntime?, obj: Scriptable, name: String, paramsToFunction: Array<Any?>): Any? {
+    fun callFunction(scriptRuntime: ScriptRuntime, obj: Scriptable, name: String, paramsToFunction: Array<Any?>): Any? {
         val property = obj.prop(name)
         if (property == NOT_FOUND) throw IllegalArgumentException("Property $name not found on $obj")
-        if (property !is BaseFunction) throw IllegalArgumentException("Property $name on $obj must be a BaseFunction")
+        if (property !is BaseFunction) throw IllegalArgumentException("Property $name on $obj must be a BaseFunction instead of ${property.jsBrief()}")
         return callFunction(scriptRuntime, property, obj, obj, paramsToFunction)
     }
 
     @JvmStatic
     @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
-    fun callFunction(func: BaseFunction, paramsToFunction: Array<Any?>): Any? {
-        return callFunction(null, func, paramsToFunction)
-    }
+    fun callFunction(func: BaseFunction, paramsToFunction: Array<Any?>): Any? =
+        callFunction(func, null, paramsToFunction)
 
     @JvmStatic
     @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
-    fun callFunction(scriptRuntime: ScriptRuntime?, func: BaseFunction, paramsToFunction: Array<Any?>): Any? {
-        return callFunction(scriptRuntime, func, null, paramsToFunction)
-    }
+    fun callFunction(scriptRuntime: ScriptRuntime, func: BaseFunction, paramsToFunction: Array<Any?>): Any? =
+        callFunction(scriptRuntime, func, null, paramsToFunction)
 
     @JvmStatic
     @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
-    fun callFunction(func: BaseFunction, scope: Scriptable?, args: Array<Any?>): Any? {
-        return callFunction(null, func, scope, args)
-    }
+    fun callFunction(func: BaseFunction, scope: Scriptable?, args: Array<Any?>): Any? =
+        callFunction(func, scope, scope, args)
 
     @JvmStatic
     @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
-    fun callFunction(scriptRuntime: ScriptRuntime?, func: BaseFunction, scope: Scriptable?, args: Array<Any?>): Any? {
-        return callFunction(scriptRuntime, func, scope, scope, args)
-    }
+    fun callFunction(scriptRuntime: ScriptRuntime, func: BaseFunction, scope: Scriptable?, args: Array<Any?>): Any? =
+        callFunction(scriptRuntime, func, scope, scope, args)
 
     @JvmStatic
     @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
-    fun callFunction(func: BaseFunction, scope: Scriptable?, thisObj: Scriptable?, args: Array<Any?>): Any? {
-        return callFunction(null, func, scope, thisObj, args)
-    }
+    fun callFunction(func: BaseFunction, scope: Scriptable?, thisObj: Scriptable?, args: Array<Any?>): Any? =
+        callFunction(null, func, scope, thisObj, args)
 
     @JvmStatic
-    @Throws(NoSuchMethodException::class, InvocationTargetException::class, IllegalAccessException::class)
-    fun callFunction(scriptRuntime: ScriptRuntime?, func: BaseFunction, scope: Scriptable?, thisObj: Scriptable?, args: Array<Any?>): Any? = withRhinoContext { cx ->
+    fun callFunction(scriptRuntime: ScriptRuntime?, func: BaseFunction, scope: Scriptable?, thisObj: Scriptable?, args: Array<Any?>): Any? = withRhinoContext(scriptRuntime) { cx ->
         try {
-            val niceScope = scope ?: cx.initStandardObjects()
+            // Prefer an existing scope to avoid repeatedly creating standard objects.
+            // zh-CN: 优先使用已有的作用域, 避免反复创建标准对象.
+            val niceScope = when {
+                scope != null -> scope
+                func.parentScope != null -> func.parentScope
+                scriptRuntime != null -> scriptRuntime.topLevelScope
+                else -> ImporterTopLevel(cx)
+            }
             when {
                 RhinoScriptRuntime.hasTopCall(cx) -> func.call(cx, niceScope, thisObj, args)
                 else -> RhinoScriptRuntime.doTopCall(func, cx, niceScope, thisObj, args, false)
             }
-        } catch (e: ScriptInterruptedException) {
-            e.message?.let { Log.v(TAG, it) }
+        } catch (e: InterruptedException) {
+            throw ScriptInterruptedException(e)
         } catch (e: ContinuationPending) {
             throw e
         } catch (e: Throwable) {
             e.printStackTrace()
             when {
                 isMainThread() -> {
-                    scriptRuntime?.exit(e) ?: throw WrappedRuntimeException(e)
+                    scriptRuntime?.exit(e) ?: when (e) {
+                        is ScriptInterruptedException -> throw e
+                        else -> throw WrappedRuntimeException(e)
+                    }
                 }
-                else -> throw WrappedRuntimeException(e)
+                else -> when (e) {
+                    is ScriptInterruptedException -> throw e
+                    else -> throw WrappedRuntimeException(e)
+                }
             }
         }
     }
@@ -274,8 +316,8 @@ object RhinoUtils {
 
     @JvmStatic
     fun unwrap(o: Any?): Any? = when (o) {
-        is String -> o
-        is ConsString -> o.toString()
+        is String, is ConsString -> Context.toString(o)
+        is BigInteger -> o
         is Number -> Context.toNumber(o)
         is Boolean -> Context.toBoolean(o)
         is Wrapper -> unwrap(o.unwrap())
@@ -337,28 +379,23 @@ object RhinoUtils {
     }
 
     @JvmStatic
-    fun encodeURI(str: String): String = encodeURI(null, str)
+    fun encodeURI(scriptRuntime: ScriptRuntime, str: String): String =
+        Context.toString(callGlobalFunction(scriptRuntime, "encodeURI", arrayOf(str)))
 
     @JvmStatic
-    fun encodeURI(scriptRuntime: ScriptRuntime?, str: String): String = Context.toString(callGlobalFunction(scriptRuntime, "encodeURI", arrayOf(str)))
+    fun parseInt(scriptRuntime: ScriptRuntime, str: String?): Double =
+        Context.toNumber(callGlobalFunction(scriptRuntime, "parseInt", arrayOf(str)))
 
     @JvmStatic
-    fun parseInt(str: String?): Double = parseInt(null, str)
+    fun parseInt(scriptRuntime: ScriptRuntime, str: String?, radix: Number): Double =
+        Context.toNumber(callGlobalFunction(scriptRuntime, "parseInt", arrayOf(str, radix.toDouble())))
 
     @JvmStatic
-    fun parseInt(scriptRuntime: ScriptRuntime?, str: String?): Double = Context.toNumber(callGlobalFunction(scriptRuntime, "parseInt", arrayOf(str)))
+    fun parseFloat(scriptRuntime: ScriptRuntime, str: String?): Double =
+        Context.toNumber(callGlobalFunction(scriptRuntime, "parseFloat", arrayOf(str)))
 
-    @JvmStatic
-    fun parseInt(str: String?, radix: Number): Double = parseInt(null, str, radix)
-
-    @JvmStatic
-    fun parseInt(scriptRuntime: ScriptRuntime?, str: String?, radix: Number): Double = Context.toNumber(callGlobalFunction(scriptRuntime, "parseInt", arrayOf(str, radix.toDouble())))
-
-    @JvmStatic
-    fun parseFloat(str: String?): Double = parseFloat(null, str)
-
-    @JvmStatic
-    fun parseFloat(scriptRuntime: ScriptRuntime?, str: String?): Double = Context.toNumber(callGlobalFunction(scriptRuntime, "parseFloat", arrayOf(str)))
+    private fun callGlobalFunction(scriptRuntime: ScriptRuntime, name: String, paramsToFunction: Array<Any?>) =
+        callFunction(scriptRuntime, scriptRuntime.topLevelScope, name, paramsToFunction)
 
     @JvmStatic
     fun ensureNativeArrayLength(o: NativeArray, length: Int, desc: String) {
@@ -385,7 +422,8 @@ object RhinoUtils {
 
     @JvmStatic
     fun runJavaScript(code: String): Any? = withRhinoContext { cx ->
-        cx.evaluateString(standardObjects, code, null, 1, null)
+        val scope = cx.getOrCreateStandardObjects()
+        cx.evaluateString(scope, code, null, 1, null)
     }
 
     @JvmStatic
@@ -434,13 +472,7 @@ object RhinoUtils {
 
     @JvmStatic
     @JvmOverloads
-    fun coerceRunnable(o: Any?, def: Runnable? = null): Runnable {
-        return coerceRunnable(null, o, def)
-    }
-
-    @JvmStatic
-    @JvmOverloads
-    fun coerceRunnable(scriptRuntime: ScriptRuntime?, o: Any?, def: Runnable? = null): Runnable = when {
+    fun coerceRunnable(scriptRuntime: ScriptRuntime, o: Any?, def: Runnable? = null): Runnable = when {
         !o.isJsNullish() -> when (o) {
             is BaseFunction -> Runnable { callFunction(scriptRuntime, o, arrayOf()) }
             is Runnable -> o
@@ -566,15 +598,15 @@ object RhinoUtils {
     @Suppress("UnnecessaryVariable")
     @JvmStatic
     fun js_object_assign(tar: Scriptable?, src: Scriptable?): Scriptable = withRhinoContext { cx ->
-        val topeLevelScope = ImporterTopLevel(cx)
+        val topLevelScope = ImporterTopLevel(cx)
         val targetObj = when (tar != null) {
-            true -> toObject(cx, topeLevelScope, tar)
-            else -> toObject(cx, topeLevelScope, UNDEFINED)
+            true -> toObject(cx, topLevelScope, tar)
+            else -> toObject(cx, topLevelScope, UNDEFINED)
         }
         if (src.isJsNullish()) {
             return@withRhinoContext targetObj
         }
-        val sourceObj = toObject(cx, topeLevelScope, src)
+        val sourceObj = toObject(cx, topLevelScope, src)
         for (key in sourceObj.ids) {
             when (key) {
                 is Int -> {
@@ -685,16 +717,24 @@ object RhinoUtils {
     fun js_object_getOwnPropertyNames(o: Scriptable): NativeArray = withRhinoContext { cx ->
         val topLevel = ImporterTopLevel(cx)
         val obj = ensureScriptableObject(toObject(cx, topLevel, o))
-        val ids = obj.getIds(true, false)
-        ids.indices.forEach { i -> ids[i] = toString(ids[i]) }
-        cx.newArray(topLevel, ids) as NativeArray
+        // val ids = obj.getIds(true, false)
+        // ids.indices.forEach { i -> ids[i] = toString(ids[i]) }
+        // cx.newArray(topLevel, ids) as NativeArray
+        try {
+            val map = obj.startCompoundOp(false)
+            val ids = obj.getIds(map, true, false)
+            ids.indices.forEach { i -> ids[i] = toString(ids[i]) }
+            cx.newArray(topLevel, ids) as NativeArray
+        } catch (_: Exception) {
+            cx.newArray(topLevel, emptyArray()) as NativeArray
+        }
     }
 
     @JvmStatic
-    fun js_object_getOwnPropertyDescriptor(value: ScriptableObject, key: Any): ScriptableObject? = withRhinoContext { cx ->
+    fun js_object_getOwnPropertyDescriptor(value: ScriptableObject, key: Any): ScriptableObject = withRhinoContext { cx ->
         val topLevel = ImporterTopLevel(cx)
         val obj = ensureScriptableObject(toObject(cx, topLevel, value))
-        obj.getOwnPropertyDescriptor(cx, key)
+        obj.getOwnPropertyDescriptor(cx, key).toScriptableObject(topLevel)
     }
 
     @JvmStatic
@@ -749,18 +789,32 @@ object RhinoUtils {
         RhinoScriptRuntime.evalSpecial(cx, global, global, arrayOf(s), "eval code", 1)
     }
 
-    fun <R> withRhinoContext(function: (context: Context) -> R): R {
+    @JvmStatic
+    @JvmOverloads
+    fun <R> withRhinoContext(scriptRuntime: ScriptRuntime? = null, function: (context: Context) -> R): R {
         var cxRhino: Context? = null
         return try {
             val cx = Context.getCurrentContext()
-                ?: Context.enter().also {
-                    it.initStandardObjects()
-                    cxRhino = it
-                }
-            @Suppress("DEPRECATION")
-            cx.optimizationLevel = -1
-            cx.languageVersion = Context.VERSION_ES6
-            cx.isInterpretedMode = true
+                ?: when (scriptRuntime) {
+                    null -> {
+                        // This fallback Context.enter() does NOT guarantee WrapFactory from RhinoJavaScriptEngine.
+                        // zh-CN: 这个兜底的 Context.enter() 无法保证使用 RhinoJavaScriptEngine 的 WrapFactory.
+                        Context.enter()
+                    }
+                    else -> {
+                        // Enter Rhino Context via engine's ContextFactory to keep WrapFactory and AutoJsContext bindings effective.
+                        // zh-CN: 通过引擎的 ContextFactory 进入 Rhino Context, 以保持 WrapFactory 和 AutoJsContext 绑定生效.
+                        val engine = scriptRuntime.engines.myEngine()
+                        require(engine is RhinoJavaScriptEngine) {
+                            "Current engine ${engine.javaClass.name} is not a RhinoJavaScriptEngine"
+                        }
+                        engine.enterContext()
+                    }
+                }.apply {
+                    languageVersion = Context.VERSION_ES6
+                    isInterpretedMode = true
+                }.also { cxRhino = it }
+
             function.invoke(cx)
         } finally {
             cxRhino?.let { Context.exit() }
@@ -832,14 +886,6 @@ object RhinoUtils {
 
     @JvmStatic
     fun initNativeObjectPrototype(o: NativeObject): NativeObject {
-        // val cx = ContextWrapper.getCurrentContext()
-        // try {
-        //     val tmpScope: Scriptable = cx.initStandardObjects()
-        //     NativeObject.init(tmpScope, false)
-        //     o.prototype = tmpScope.get("Object", tmpScope) as Scriptable
-        // } finally {
-        //     Context.exit()
-        // }
         return o.apply { prototype = objectPrototype }
     }
 
@@ -857,6 +903,7 @@ object RhinoUtils {
 
     @JvmStatic
     fun newNativeArray(array: Array<Any?>) = initNativeArrayPrototype(NativeArray(array))
+
     @JvmStatic
     fun hashCodeOfScriptable(other: Any?): Int? {
         if (other !is Scriptable) return null
@@ -871,6 +918,58 @@ object RhinoUtils {
             if (hashCode is Number) return hashCode.toInt()
         }
         return null
+    }
+
+    fun handleAsyncOperation(scriptRuntime: ScriptRuntime, func: () -> Any?): NativeObject {
+        return handleAsyncOperation(scriptRuntime, func) { it }
+    }
+
+    fun <T> handleAsyncOperation(
+        scriptRuntime: ScriptRuntime,
+        operation: () -> T,
+        uiMapper: (T) -> Any?,
+    ): NativeObject {
+        val promiseAdapter = ScriptPromiseAdapter()
+
+        // Use Android Thread directly to avoid coupling with JS threads/loopers here.
+        // zh-CN: 直接使用 Android Thread, 避免在此处与 JS 线程/Looper 机制强耦合.
+        Thread {
+            try {
+                // Do the blocking work (e.g. network request) in background thread.
+                // zh-CN: 在后台线程执行阻塞式操作 (如网络请求).
+                val result = operation.invoke()
+
+                // Resolve on UI thread so that UI scripts can safely touch `ui.*` in then().
+                // zh-CN: 在 UI 线程 resolve, 让 UI 脚本在 then() 中可安全操作 `ui.*`.
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        // Map result on UI thread (e.g. wrap Java objects into Rhino objects).
+                        // zh-CN: 在 UI 线程映射结果 (例如将 Java 对象包装为 Rhino 对象).
+                        val mapped = uiMapper.invoke(result)
+                        promiseAdapter.resolve(mapped)
+                    } catch (t: Throwable) {
+                        promiseAdapter.reject(t)
+                    }
+                }
+            } catch (t: Throwable) {
+                // Reject on UI thread for consistent callback threading.
+                // zh-CN: 在 UI 线程 reject, 保持回调线程一致性.
+                Handler(Looper.getMainLooper()).post {
+                    promiseAdapter.reject(t)
+                }
+            }
+        }.start()
+
+        // Convert ScriptPromiseAdapter into a JavaScript Promise.
+        // zh-CN: 将 ScriptPromiseAdapter 转换为 JavaScript Promise.
+        return callFunction(scriptRuntime, scriptRuntime.js_ResultAdapter, "promise", arrayOf(promiseAdapter)) as NativeObject
+    }
+
+    @JvmStatic
+    fun Class<*>.getRhinoStandardFunctionMethods(): List<Method> {
+        return this.declaredMethods.filter {
+            it.isAnnotationPresent(RhinoStandardFunctionInterface::class.java)
+        }
     }
 
     class ObsoletedRhinoFunctionException(funcName: String) : Exception(
